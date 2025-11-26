@@ -1945,19 +1945,17 @@ def show_view_jurnal():
 
         if data:
             df = pd.DataFrame(data)
-
-            # Tampilkan dataframe dengan kolom No
+            
+            # ========== PERUBAHAN DI SINI ==========
+            # Buat dataframe untuk display tanpa kolom No, RowIndex, GroupID
+            df_display = df[['Tanggal', 'Akun', 'Debit', 'Kredit', 'Keterangan']]
+            
+            # Tampilkan dataframe hanya dengan kolom yang diinginkan
             st.dataframe(
-                df,
+                df_display,
                 use_container_width=True,
                 hide_index=True,
-                height=600,
-                column_config={
-                    "No": st.column_config.NumberColumn(
-                        "No",
-                        width="small"
-                    )
-                }
+                height=600
             )
 
             col1, col2, col3 = st.columns(3)
@@ -1971,10 +1969,10 @@ def show_view_jurnal():
                 else:
                     st.error("❌ Jurnal Tidak Balance!")
 
-            # Export option
+            # Export option - pakai df_display
             st.download_button(
                 label="📥 Export ke Excel",
-                data=df.to_csv(index=False).encode('utf-8'),
+                data=df_display.to_csv(index=False).encode('utf-8'),
                 file_name=f"jurnal_umum_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 use_container_width=True
@@ -2002,7 +2000,7 @@ def show_view_jurnal():
                     )
                 
                 with col2:
-                    if st.button("🗑️ Hapus Transaksi Lengkap", type="secondary", use_container_width=True):
+                    if st.button("🗑️ Hapus Transaksi", type="secondary", use_container_width=True):
                         if selected_transaction:
                             group_id = transaction_options[selected_transaction]
                             transaction_data = transaction_groups[group_id]
