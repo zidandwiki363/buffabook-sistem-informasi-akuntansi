@@ -1,8 +1,10 @@
 import streamlit as st
-import sqlite3
+import openpyxl
+from openpyxl import Workbook, load_workbook
 import pandas as pd
 import os
 from datetime import datetime
+import sqlite3
 import hashlib
 import re
 
@@ -62,87 +64,7 @@ def is_valid_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
-# Initialize main database
-def init_main_database():
-    """Initialize SQLite database for main application data"""
-    conn = sqlite3.connect('buffabook_main.db')
-    c = conn.cursor()
-    
-    # Inventory table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_name TEXT NOT NULL,
-            product_quantity TEXT NOT NULL,
-            product_price REAL NOT NULL,
-            total_price REAL NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Sales table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            product_name TEXT NOT NULL,
-            product_quantity TEXT NOT NULL,
-            product_price REAL NOT NULL,
-            total_sales REAL NOT NULL,
-            payment_method TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-    ''')
-    
-    # Purchases table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS purchases (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            product_name TEXT NOT NULL,
-            product_quantity TEXT NOT NULL,
-            product_price REAL NOT NULL,
-            total_price REAL NOT NULL,
-            payment_method TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-    ''')
-    
-    # Journal table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS journal (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            account TEXT NOT NULL,
-            debit REAL NOT NULL,
-            credit REAL NOT NULL,
-            description TEXT,
-            transaction_type TEXT DEFAULT 'General',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Ledger table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            account TEXT NOT NULL,
-            date TEXT NOT NULL,
-            description TEXT,
-            debit REAL NOT NULL,
-            credit REAL NOT NULL,
-            balance REAL NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-
-# Initialize databases
 init_auth_db()
-init_main_database()
 
 st.set_page_config(
     page_title="BuffaBook - Peternakan Kerbau",
@@ -421,127 +343,20 @@ def get_inventory_account(product_name):
     
     return "1-12000 - Persediaan Kerbau Dewasa Jantan"  # default
 
-# Database Functions
-def get_inventory_data():
-    """Get all inventory data from database"""
-    conn = sqlite3.connect('buffabook_main.db')
-    df = pd.read_sql_query("SELECT * FROM inventory", conn)
-    conn.close()
-    return df
+# Database Initialization
+def create_workbook_if_not_exists():
+    if not os.path.exists('databasesia.xlsx'):
+        wb = openpyxl.Workbook()
+        ws_inventory = wb.active
+        ws_inventory.title = "Inventory"
+        ws_inventory.append(['Product Name', 'Product Quantity', 'Product Price', 'Total Price'])
+        ws_sales = wb.create_sheet("Sales")
+        ws_sales.append(['Date', 'Product Name', 'Product Quantity', 'Product Price', 'Total Sales', 'Timestamp'])
+        ws_purchases = wb.create_sheet("Purchases")
+        ws_purchases.append(['Date', 'Product Name', 'Product Quantity', 'Product Price', 'Total Price', 'Timestamp'])
+        wb.save('databasesia.xlsx')
 
-def get_sales_data():
-    """Get all sales data from database"""
-    conn = sqlite3.connect('buffabook_main.db')
-    df = pd.read_sql_query("SELECT * FROM sales", conn)
-    conn.close()
-    return df
-
-def get_purchases_data():
-    """Get all purchases data from database"""
-    conn = sqlite3.connect('buffabook_main.db')
-    df = pd.read_sql_query("SELECT * FROM purchases", conn)
-    conn.close()
-    return df
-
-def get_journal_data():
-    """Get all journal data from database"""
-    conn = sqlite3.connect('buffabook_main.db')
-    df = pd.read_sql_query("SELECT * FROM journal", conn)
-    conn.close()
-    return df
-
-def get_ledger_data():
-    """Get all ledger data from database"""
-    conn = sqlite3.connect('buffabook_main.db')
-    df = pd.read_sql_query("SELECT * FROM ledger", conn)
-    conn.close()
-    return df
-
-def add_inventory_item(product_name, product_quantity, product_price, total_price):
-    """Add or update inventory item"""
-    conn = sqlite3.connect('buffabook_main.db')
-    c = conn.cursor()
-    
-    # Check if product exists
-    c.execute("SELECT * FROM inventory WHERE product_name = ?", (product_name,))
-    existing = c.fetchone()
-    
-    if existing:
-        # Update existing product
-        c.execute('''
-            UPDATE inventory 
-            SET product_quantity = ?, product_price = ?, total_price = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE product_name = ?
-        ''', (product_quantity, product_price, total_price, product_name))
-    else:
-        # Insert new product
-        c.execute('''
-            INSERT INTO inventory (product_name, product_quantity, product_price, total_price)
-            VALUES (?, ?, ?, ?)
-        ''', (product_name, product_quantity, product_price, total_price))
-    
-    conn.commit()
-    conn.close()
-
-def add_sales_transaction(date, product_name, product_quantity, product_price, total_sales, payment_method, timestamp):
-    """Add sales transaction"""
-    conn = sqlite3.connect('buffabook_main.db')
-    c = conn.cursor()
-    
-    c.execute('''
-        INSERT INTO sales (date, product_name, product_quantity, product_price, total_sales, payment_method, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (date, product_name, product_quantity, product_price, total_sales, payment_method, timestamp))
-    
-    conn.commit()
-    conn.close()
-
-def add_purchases_transaction(date, product_name, product_quantity, product_price, total_price, payment_method, timestamp):
-    """Add purchases transaction"""
-    conn = sqlite3.connect('buffabook_main.db')
-    c = conn.cursor()
-    
-    c.execute('''
-        INSERT INTO purchases (date, product_name, product_quantity, product_price, total_price, payment_method, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (date, product_name, product_quantity, product_price, total_price, payment_method, timestamp))
-    
-    conn.commit()
-    conn.close()
-
-def add_journal_entry(date, account, debit, credit, description, transaction_type='General'):
-    """Add journal entry"""
-    conn = sqlite3.connect('buffabook_main.db')
-    c = conn.cursor()
-    
-    c.execute('''
-        INSERT INTO journal (date, account, debit, credit, description, transaction_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (date, account, debit, credit, description, transaction_type))
-    
-    conn.commit()
-    conn.close()
-
-def add_ledger_entry(account, date, description, debit, credit, balance):
-    """Add ledger entry"""
-    conn = sqlite3.connect('buffabook_main.db')
-    c = conn.cursor()
-    
-    c.execute('''
-        INSERT INTO ledger (account, date, description, debit, credit, balance)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (account, date, description, debit, credit, balance))
-    
-    conn.commit()
-    conn.close()
-
-def clear_table(table_name):
-    """Clear all data from a table"""
-    conn = sqlite3.connect('buffabook_main.db')
-    c = conn.cursor()
-    c.execute(f"DELETE FROM {table_name}")
-    conn.commit()
-    conn.close()
+create_workbook_if_not_exists()
 
 # Initialize session state
 if 'current_page' not in st.session_state:
@@ -571,6 +386,7 @@ with st.sidebar:
             st.session_state.current_page = page
             st.rerun()
 
+
 # Main Content Area
 def show_dashboard():
     st.markdown('<div class="main-header"><h1>🐃 Welcome to BuffaBook</h1><p>Sistem Pencatatan Peternakan Kerbau</p></div>', unsafe_allow_html=True)
@@ -587,17 +403,27 @@ def show_dashboard():
     col1, col2, col3 = st.columns(3)
     
     try:
+        wb = openpyxl.load_workbook('databasesia.xlsx')
+        
         # Total Inventory Items
-        inventory_df = get_inventory_data()
-        total_items = len(inventory_df)
+        ws_inv = wb['Inventory']
+        total_items = ws_inv.max_row - 1
         
         # Total Purchases
-        purchases_df = get_purchases_data()
-        total_purchases = purchases_df['total_price'].sum() if not purchases_df.empty else 0
+        ws_purch = wb['Purchases']
+        total_purchases = 0
+        for row in ws_purch.iter_rows(min_row=2, values_only=True):
+            if row and row[4]:
+                total_purchases += safe_parse_price(row[4])
         
         # Total Sales
-        sales_df = get_sales_data()
-        total_sales = sales_df['total_sales'].sum() if not sales_df.empty else 0
+        ws_sales = wb['Sales']
+        total_sales = 0
+        for row in ws_sales.iter_rows(min_row=2, values_only=True):
+            if row and row[4]:
+                total_sales += safe_parse_price(row[4])
+        
+        wb.close()
         
         with col1:
             st.markdown(f"""
@@ -651,6 +477,7 @@ def show_kartu_persediaan():
             with col1:
                 date = st.date_input("Tanggal", datetime.now())
                 product_name = st.text_input("Nama Produk")
+                # TAMBAHAN: Pilihan metode pembayaran
                 payment_method = st.selectbox("Metode Pembayaran", ["Tunai", "Kredit"])
                 
             with col2:
@@ -672,13 +499,15 @@ def show_kartu_persediaan():
                         total_price = price * quantity
                         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         
-                        # Update inventory
-                        inventory_df = get_inventory_data()
-                        product_found = False
+                        wb = openpyxl.load_workbook('databasesia.xlsx')
+                        ws_purchases = wb['Purchases']
+                        ws_inventory = wb['Inventory']
                         
-                        for idx, row in inventory_df.iterrows():
-                            if str(row['product_name']).strip().lower() == product_name.strip().lower():
-                                existing_qty_str = str(row['product_quantity']) if row['product_quantity'] is not None else "0"
+                        # Update inventory
+                        product_found = False
+                        for row in ws_inventory.iter_rows(min_row=2, values_only=False):
+                            if row[0].value and str(row[0].value).strip().lower() == product_name.strip().lower():
+                                existing_qty_str = str(row[1].value) if row[1].value is not None else "0"
                                 try:
                                     parts = existing_qty_str.split()
                                     qty_lama = int(parts[0]) if parts else 0
@@ -687,7 +516,7 @@ def show_kartu_persediaan():
                                     qty_lama = 0
                                     existing_unit = ''
                                 
-                                harga_lama = float(row['product_price'] or 0)
+                                harga_lama = float(row[2].value or 0)
                                 qty_baru = quantity
                                 harga_baru = float(price)
                                 
@@ -697,39 +526,48 @@ def show_kartu_persediaan():
                                 else:
                                     harga_rata2 = ((qty_lama * harga_lama) + (qty_baru * harga_baru)) / total_qty
                                 
-                                new_quantity = f"{total_qty} {existing_unit or unit}".strip()
-                                new_total_price = round(harga_rata2 * total_qty, 2)
+                                row[1].value = f"{total_qty} {existing_unit or unit}".strip()
+                                row[2].value = round(harga_rata2, 2)
+                                row[3].value = round(harga_rata2 * total_qty, 2)
                                 
-                                add_inventory_item(product_name, new_quantity, round(harga_rata2, 2), new_total_price)
                                 product_found = True
                                 break
                         
                         if not product_found:
-                            add_inventory_item(
-                                product_name, 
-                                f"{quantity} {unit}", 
-                                round(price, 2), 
+                            ws_inventory.append([
+                                product_name,
+                                f"{quantity} {unit}",
+                                round(price, 2),
                                 round(total_price, 2)
-                            )
+                            ])
                         
                         # Add to purchases
-                        add_purchases_transaction(
+                        ws_purchases.append([
                             date.strftime('%Y-%m-%d'),
                             product_name,
                             f"{quantity} {unit}",
                             round(price, 2),
                             round(total_price, 2),
-                            payment_method,
-                            timestamp
-                        )
+                            timestamp,
+                            payment_method  # TAMBAHAN: Simpan metode pembayaran
+                        ])
+                        
+                        wb.save('databasesia.xlsx')
+                        wb.close()
                         
                         # ========== OTOMATIS BUAT JURNAL UMUM ==========
+                        create_journal_workbook()  # Pastikan file jurnal ada
+                        wb_journal = load_workbook('journal_ledger.xlsx')
+                        ws_journal = wb_journal['Jurnal Umum']
+                        ws_ledger = wb_journal['Buku Besar']
+                        
                         date_str = date.strftime('%Y-%m-%d')
                         keterangan = f"Pembelian {product_name} - {quantity} {unit}"
                         
                         # Tentukan akun persediaan berdasarkan nama produk
                         inventory_account = "1-12000 - Persediaan Kerbau Dewasa Jantan"  # default
                         
+                        # Mapping nama produk ke akun persediaan
                         product_to_account = {
                             "Kerbau Dewasa Jantan": "1-12000 - Persediaan Kerbau Dewasa Jantan",
                             "Kerbau Dewasa Betina": "1-12100 - Persediaan Kerbau Dewasa Betina", 
@@ -739,6 +577,7 @@ def show_kartu_persediaan():
                             "Anak Kerbau Betina": "1-12500 - Persediaan Anak Kerbau Betina",
                         }
                         
+                        # Cari akun yang cocok
                         for key, account in product_to_account.items():
                             if key.lower() in product_name.lower():
                                 inventory_account = account
@@ -751,31 +590,66 @@ def show_kartu_persediaan():
                             credit_account = "2-10000 - Utang Usaha"
                         
                         # Simpan ke Jurnal Umum
-                        add_journal_entry(date_str, inventory_account, total_price, 0, keterangan)
-                        add_journal_entry("", credit_account, 0, total_price, "")
+                        # Baris Debit: Persediaan
+                        ws_journal.append([
+                            date_str,
+                            inventory_account,
+                            total_price,  # Debit
+                            0,  # Kredit
+                            keterangan
+                        ])
+                        
+                        # Baris Kredit: Kas/Utang
+                        ws_journal.append([
+                            "",  # Tanggal kosong
+                            credit_account,
+                            0,  # Debit  
+                            total_price,  # Kredit
+                            ""  # Keterangan kosong
+                        ])
+                        
+                        # Baris kosong pemisah
+                        ws_journal.append(["", "", "", "", ""])
                         
                         # Simpan ke Buku Besar
-                        ledger_df = get_ledger_data()
+                        # Hitung saldo terakhir untuk setiap akun
                         current_balances = {}
-                        
-                        for _, row in ledger_df.iterrows():
-                            account = row['account']
-                            saldo = safe_parse_price(row['balance']) if row['balance'] else 0
-                            current_balances[account] = saldo
+                        for row in ws_ledger.iter_rows(min_row=2, values_only=True):
+                            if row and row[0]:
+                                account = row[0]
+                                saldo = safe_parse_price(row[5]) if row[5] else 0
+                                current_balances[account] = saldo
                         
                         # Update saldo akun persediaan (debit)
                         current_balance_inventory = current_balances.get(inventory_account, 0)
                         new_balance_inventory = current_balance_inventory + total_price
-                        add_ledger_entry(inventory_account, date_str, keterangan, total_price, 0, new_balance_inventory)
+                        ws_ledger.append([
+                            inventory_account,
+                            date_str,
+                            keterangan,
+                            total_price,  # Debit
+                            0,  # Kredit
+                            new_balance_inventory
+                        ])
                         
                         # Update saldo akun kas/utang (kredit)
                         current_balance_credit = current_balances.get(credit_account, 0)
                         if payment_method == "Tunai":
                             new_balance_credit = current_balance_credit - total_price
                         else:
-                            new_balance_credit = current_balance_credit + total_price
+                            new_balance_credit = current_balance_credit + total_price  # Utang bertambah
                         
-                        add_ledger_entry(credit_account, date_str, keterangan, 0, total_price, new_balance_credit)
+                        ws_ledger.append([
+                            credit_account,
+                            date_str,
+                            keterangan,
+                            0,  # Debit
+                            total_price,  # Kredit
+                            new_balance_credit
+                        ])
+                        
+                        wb_journal.save('journal_ledger.xlsx')
+                        wb_journal.close()
                         # ========== END OTOMATIS JURNAL ==========
                         
                         st.success("✅ Produk berhasil ditambahkan ke persediaan dan jurnal dibuat otomatis!")
@@ -787,24 +661,32 @@ def show_kartu_persediaan():
         # Riwayat Pembelian
         st.markdown("### 📋 Riwayat Pembelian")
         try:
-            purchases_df = get_purchases_data()
+            wb = openpyxl.load_workbook('databasesia.xlsx')
+            ws = wb['Purchases']
             
-            if not purchases_df.empty:
-                data = []
-                total_purchases = 0.0
+            data = []
+            total_purchases = 0.0
+            
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not row or not row[0]:
+                    continue
                 
-                for _, row in purchases_df.iterrows():
-                    total_price_val = safe_parse_price(row['total_price'])
-                    total_purchases += total_price_val
-                    
-                    data.append({
-                        'Tanggal': row['date'],
-                        'Nama Produk': row['product_name'],
-                        'Kuantitas': row['product_quantity'],
-                        'Harga Satuan': format_rupiah(safe_parse_price(row['product_price'])),
-                        'Total Harga': format_rupiah(total_price_val)
-                    })
+                date, product_name, product_quantity, product_price, total_price = row[:5]
+                product_price_val = safe_parse_price(product_price)
+                total_price_val = safe_parse_price(total_price)
+                total_purchases += total_price_val
                 
+                data.append({
+                    'Tanggal': date,
+                    'Nama Produk': product_name,
+                    'Kuantitas': product_quantity,
+                    'Harga Satuan': format_rupiah(product_price_val),
+                    'Total Harga': format_rupiah(total_price_val)
+                })
+            
+            wb.close()
+            
+            if data:
                 df = pd.DataFrame(data)
                 st.dataframe(df, use_container_width=True, hide_index=True)
                 
@@ -828,11 +710,13 @@ def show_kartu_persediaan():
             with col1:
                 date = st.date_input("Tanggal Penjualan", datetime.now())
                 product_name = st.selectbox("Nama Produk", list(SELLING_PRICE.keys()))
+                # TAMBAHAN: Pilihan metode pembayaran
                 payment_method = st.selectbox("Metode Pembayaran", ["Tunai", "Kredit"], key="sales_payment")
             
             with col2:
                 quantity = st.number_input("Jumlah (ekor)", min_value=1, value=1, key="qty_sales")
                 
+                # Display price (readonly)
                 selling_price = SELLING_PRICE[product_name]
                 st.text_input("Harga Jual per Unit", value=format_rupiah(selling_price), disabled=True)
             
@@ -840,34 +724,46 @@ def show_kartu_persediaan():
             
             if add_to_list:
                 try:
-                    inventory_df = get_inventory_data()
+                    # Check inventory dan ambil HPP
+                    wb = openpyxl.load_workbook('databasesia.xlsx')
+                    ws_inv = wb['Inventory']
                     
                     stock_available = False
                     hpp_price = 0
-                    for _, row in inventory_df.iterrows():
-                        if row['product_name'] and str(row['product_name']).strip().lower() == product_name.strip().lower():
-                            qty_str = str(row['product_quantity']) if row['product_quantity'] is not None else "0"
+                    for row in ws_inv.iter_rows(min_row=2, values_only=False):
+                        if row[0].value and str(row[0].value).strip().lower() == product_name.strip().lower():
+                            qty_str = str(row[1].value) if row[1].value is not None else "0"
                             try:
                                 stock = int(qty_str.split()[0])
                             except:
                                 stock = 0
                             
-                            hpp_price = safe_parse_price(row['product_price']) if row['product_price'] else 0
+                            # Ambil HPP dari inventory
+                            hpp_price = safe_parse_price(row[2].value) if row[2].value else 0
                             
                             if stock >= quantity:
+                                # Update stock
                                 unit = qty_str.split()[1] if len(qty_str.split()) > 1 else "ekor"
                                 new_stock = stock - quantity
-                                new_quantity = f"{new_stock} {unit}".strip()
-                                new_total_price = hpp_price * new_stock
+                                row[1].value = f"{new_stock} {unit}".strip()
                                 
-                                add_inventory_item(product_name, new_quantity, hpp_price, new_total_price)
+                                try:
+                                    row[3].value = hpp_price * new_stock
+                                except:
+                                    pass
+                                
                                 stock_available = True
                             else:
                                 st.error(f"❌ Stok {product_name} hanya {stock} ekor!")
+                                wb.close()
                                 break
                             break
                     
                     if stock_available:
+                        wb.save('databasesia.xlsx')
+                        wb.close()
+                        
+                        # Hitung total
                         total_sales = selling_price * quantity
                         total_hpp = hpp_price * quantity
                         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -875,15 +771,16 @@ def show_kartu_persediaan():
                         if 'order_list' not in st.session_state:
                             st.session_state.order_list = []
                         
+                        # Simpan HPP juga di session state
                         st.session_state.order_list.append({
                             'date': date.strftime('%Y-%m-%d'),
                             'product_name': product_name,
                             'quantity': f"{quantity} ekor",
                             'price': selling_price,
-                            'hpp_price': hpp_price,
+                            'hpp_price': hpp_price,  # TAMBAHAN: Simpan HPP
                             'total': total_sales,
-                            'total_hpp': total_hpp,
-                            'payment_method': payment_method,
+                            'total_hpp': total_hpp,  # TAMBAHAN: Simpan total HPP
+                            'payment_method': payment_method,  # TAMBAHAN: Simpan metode pembayaran
                             'timestamp': timestamp
                         })
                         
@@ -896,12 +793,16 @@ def show_kartu_persediaan():
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
+        # ========== TOMBOL SIMPAN SEMUA PENJUALAN DIPINDAHKAN KE LUAR FORM ==========
+        
+        # Daftar Penjualan Sementara
         st.markdown("### 🛍️ Daftar Penjualan Sementara")
         
         if 'order_list' not in st.session_state:
             st.session_state.order_list = []
             
         if st.session_state.order_list:
+            # Display order list
             order_data = []
             total_all_sales = 0
             total_all_hpp = 0
@@ -935,22 +836,34 @@ def show_kartu_persediaan():
                 </div>
                 """, unsafe_allow_html=True)
             
+            # Save all button - SEKARANG DI LUAR FORM
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("💾 Simpan Semua Penjualan", use_container_width=True):
                     try:
+                        wb = openpyxl.load_workbook('databasesia.xlsx')
+                        ws_sales = wb['Sales']
+                        
                         for order in st.session_state.order_list:
-                            add_sales_transaction(
+                            ws_sales.append([
                                 order['date'],
                                 order['product_name'],
                                 order['quantity'],
                                 order['price'],
                                 order['total'],
-                                order['payment_method'],
-                                order['timestamp']
-                            )
+                                order['timestamp'],
+                                order['payment_method']  # TAMBAHAN: Simpan metode pembayaran
+                            ])
+                        
+                        wb.save('databasesia.xlsx')
+                        wb.close()
                         
                         # ========== OTOMATIS BUAT JURNAL UNTUK SEMUA PENJUALAN ==========
+                        create_journal_workbook()
+                        wb_journal = load_workbook('journal_ledger.xlsx')
+                        ws_journal = wb_journal['Jurnal Umum']
+                        ws_ledger = wb_journal['Buku Besar']
+                        
                         for order in st.session_state.order_list:
                             date_str = order['date']
                             product_name = order['product_name']
@@ -960,6 +873,8 @@ def show_kartu_persediaan():
                             payment_method = order['payment_method']
                             keterangan = f"Penjualan {product_name} - {quantity} ekor"
                             
+                            # Tentukan akun berdasarkan produk dan metode pembayaran
+                            # Mapping nama produk ke akun persediaan
                             product_to_account = {
                                 "Kerbau Dewasa Jantan": "1-12000 - Persediaan Kerbau Dewasa Jantan",
                                 "Kerbau Dewasa Betina": "1-12100 - Persediaan Kerbau Dewasa Betina", 
@@ -971,41 +886,117 @@ def show_kartu_persediaan():
                             
                             inventory_account = product_to_account.get(product_name, "1-12000 - Persediaan Kerbau Dewasa Jantan")
                             
+                            # Tentukan akun debit berdasarkan metode pembayaran
                             if payment_method == "Tunai":
                                 debit_account_1 = "1-10000 - Kas"
-                            else:
+                            else:  # Kredit
                                 debit_account_1 = "1-11000 - Piutang"
                             
-                            ledger_df = get_ledger_data()
+                            # Hitung saldo terakhir
                             current_balances = {}
+                            for row in ws_ledger.iter_rows(min_row=2, values_only=True):
+                                if row and row[0]:
+                                    account = row[0]
+                                    saldo = safe_parse_price(row[5]) if row[5] else 0
+                                    current_balances[account] = saldo
                             
-                            for _, row in ledger_df.iterrows():
-                                account = row['account']
-                                saldo = safe_parse_price(row['balance']) if row['balance'] else 0
-                                current_balances[account] = saldo
+                            # JURNAL PENJUALAN - 4 ENTRI:
+                            # 1. Debit: Kas/Piutang (total penjualan)
+                            # 2. Debit: HPP (total HPP)
+                            # 3. Kredit: Pendapatan (total penjualan)  
+                            # 4. Kredit: Persediaan (total HPP)
                             
-                            # JURNAL PENJUALAN
-                            add_journal_entry(date_str, debit_account_1, total_sales, 0, keterangan)
-                            add_journal_entry("", "5-50000 - HPP", total_hpp, 0, "")
-                            add_journal_entry("", "4-40000 - Pendapatan", 0, total_sales, "")
-                            add_journal_entry("", inventory_account, 0, total_hpp, "")
+                            # Baris 1: Debit Kas/Piutang
+                            ws_journal.append([
+                                date_str,
+                                debit_account_1,
+                                total_sales,  # Debit
+                                0,  # Kredit
+                                keterangan
+                            ])
+                            
+                            # Baris 2: Debit HPP
+                            ws_journal.append([
+                                "",
+                                "5-50000 - HPP",
+                                total_hpp,  # Debit
+                                0,  # Kredit
+                                ""
+                            ])
+                            
+                            # Baris 3: Kredit Pendapatan
+                            ws_journal.append([
+                                "",
+                                "4-40000 - Pendapatan",
+                                0,  # Debit
+                                total_sales,  # Kredit
+                                ""
+                            ])
+                            
+                            # Baris 4: Kredit Persediaan
+                            ws_journal.append([
+                                "",
+                                inventory_account,
+                                0,  # Debit
+                                total_hpp,  # Kredit  
+                                ""
+                            ])
+                            
+                            # Baris kosong pemisah
+                            ws_journal.append(["", "", "", "", ""])
                             
                             # UPDATE BUKU BESAR
+                            # 1. Kas/Piutang (debit)
                             current_balance_debit1 = current_balances.get(debit_account_1, 0)
                             new_balance_debit1 = current_balance_debit1 + total_sales
-                            add_ledger_entry(debit_account_1, date_str, keterangan, total_sales, 0, new_balance_debit1)
+                            ws_ledger.append([
+                                debit_account_1,
+                                date_str,
+                                keterangan,
+                                total_sales,  # Debit
+                                0,  # Kredit
+                                new_balance_debit1
+                            ])
                             
+                            # 2. HPP (debit)
                             current_balance_hpp = current_balances.get("5-50000 - HPP", 0)
                             new_balance_hpp = current_balance_hpp + total_hpp
-                            add_ledger_entry("5-50000 - HPP", date_str, keterangan, total_hpp, 0, new_balance_hpp)
+                            ws_ledger.append([
+                                "5-50000 - HPP",
+                                date_str,
+                                keterangan,
+                                total_hpp,  # Debit
+                                0,  # Kredit
+                                new_balance_hpp
+                            ])
                             
+                            # 3. Pendapatan (kredit)
                             current_balance_pendapatan = current_balances.get("4-40000 - Pendapatan", 0)
-                            new_balance_pendapatan = current_balance_pendapatan - total_sales
-                            add_ledger_entry("4-40000 - Pendapatan", date_str, keterangan, 0, total_sales, new_balance_pendapatan)
+                            new_balance_pendapatan = current_balance_pendapatan - total_sales  # Pendapatan normal balance kredit
+                            ws_ledger.append([
+                                "4-40000 - Pendapatan",
+                                date_str,
+                                keterangan,
+                                0,  # Debit
+                                total_sales,  # Kredit
+                                new_balance_pendapatan
+                            ])
                             
+                            # 4. Persediaan (kredit)
                             current_balance_inventory = current_balances.get(inventory_account, 0)
                             new_balance_inventory = current_balance_inventory - total_hpp
-                            add_ledger_entry(inventory_account, date_str, keterangan, 0, total_hpp, new_balance_inventory)
+                            ws_ledger.append([
+                                inventory_account,
+                                date_str,
+                                keterangan,
+                                0,  # Debit
+                                total_hpp,  # Kredit
+                                new_balance_inventory
+                            ])
+                        
+                        wb_journal.save('journal_ledger.xlsx')
+                        wb_journal.close()
+                        # ========== END OTOMATIS JURNAL ==========
                         
                         st.session_state.order_list = []
                         st.success("✅ Semua penjualan berhasil disimpan dan jurnal dibuat otomatis!")
@@ -1026,39 +1017,53 @@ def show_kartu_persediaan():
         st.markdown("### 📋 Riwayat Transaksi Lengkap")
         
         try:
-            purchases_df = get_purchases_data()
-            sales_df = get_sales_data()
+            wb = openpyxl.load_workbook('databasesia.xlsx')
+            ws_purchases = wb['Purchases']
+            ws_sales = wb['Sales']
             
+            # Gabungkan data pembelian dan penjualan
             all_transactions = []
             
-            for _, row in purchases_df.iterrows():
+            # Data pembelian
+            for row in ws_purchases.iter_rows(min_row=2, values_only=True):
+                if not row or not row[0]:
+                    continue
+                date, product_name, quantity, price, total, timestamp = row[:6]
                 all_transactions.append({
-                    'Tanggal': row['date'],
+                    'Tanggal': date,
                     'Tipe': 'Pembelian',
-                    'Produk': row['product_name'],
-                    'Kuantitas': row['product_quantity'],
-                    'Harga/Unit': format_rupiah(safe_parse_price(row['product_price'])),
-                    'Total': format_rupiah(safe_parse_price(row['total_price'])),
-                    'Waktu': row['timestamp'].split(' ')[1] if row['timestamp'] and ' ' in row['timestamp'] else ''
+                    'Produk': product_name,
+                    'Kuantitas': quantity,
+                    'Harga/Unit': format_rupiah(safe_parse_price(price)),
+                    'Total': format_rupiah(safe_parse_price(total)),
+                    'Waktu': timestamp.split(' ')[1] if timestamp and ' ' in timestamp else ''
                 })
             
-            for _, row in sales_df.iterrows():
+            # Data penjualan
+            for row in ws_sales.iter_rows(min_row=2, values_only=True):
+                if not row or not row[0]:
+                    continue
+                date, product_name, quantity, price, total, timestamp = row[:6]
                 all_transactions.append({
-                    'Tanggal': row['date'],
+                    'Tanggal': date,
                     'Tipe': 'Penjualan',
-                    'Produk': row['product_name'],
-                    'Kuantitas': row['product_quantity'],
-                    'Harga/Unit': format_rupiah(safe_parse_price(row['product_price'])),
-                    'Total': format_rupiah(safe_parse_price(row['total_sales'])),
-                    'Waktu': row['timestamp'].split(' ')[1] if row['timestamp'] and ' ' in row['timestamp'] else ''
+                    'Produk': product_name,
+                    'Kuantitas': quantity,
+                    'Harga/Unit': format_rupiah(safe_parse_price(price)),
+                    'Total': format_rupiah(safe_parse_price(total)),
+                    'Waktu': timestamp.split(' ')[1] if timestamp and ' ' in timestamp else ''
                 })
+            
+            wb.close()
             
             if all_transactions:
+                # Urutkan berdasarkan tanggal dan waktu
                 all_transactions.sort(key=lambda x: (x['Tanggal'], x['Waktu']), reverse=True)
                 
                 df = pd.DataFrame(all_transactions)
                 st.dataframe(df, use_container_width=True, hide_index=True)
                 
+                # Summary
                 total_pembelian = sum(safe_parse_price(t['Total'].replace('Rp', '').replace('.', '').replace(',', '.').strip()) 
                                     for t in all_transactions if t['Tipe'] == 'Pembelian')
                 total_penjualan = sum(safe_parse_price(t['Total'].replace('Rp', '').replace('.', '').replace(',', '.').strip()) 
@@ -1080,141 +1085,171 @@ def show_kartu_persediaan():
         st.markdown("### 📊 Kartu Persediaan Detail")
         
         try:
-            inventory_df = get_inventory_data()
-            purchases_df = get_purchases_data()
-            sales_df = get_sales_data()
+            wb = openpyxl.load_workbook('databasesia.xlsx')
+            ws_inventory = wb['Inventory']
+            ws_purchases = wb['Purchases']
+            ws_sales = wb['Sales']
             
+            # Ambil semua produk dari inventory
             products = []
-            for _, row in inventory_df.iterrows():
-                product_name = row['product_name']
-                quantity_balance = row['product_quantity']
-                price_balance = safe_parse_price(row['product_price'])
-                total_balance = safe_parse_price(row['total_price'])
-                
-                qty_balance = safe_parse_int_from_qtytext(quantity_balance)
-                unit_balance = str(quantity_balance).replace(str(qty_balance), "").strip()
-                
-                purchases_data = []
-                for _, purchase_row in purchases_df.iterrows():
-                    if purchase_row['product_name'] and str(purchase_row['product_name']).strip().lower() == product_name.lower():
-                        purchases_data.append({
-                            'tanggal': purchase_row['date'],
-                            'timestamp': purchase_row['timestamp'],
-                            'qty': safe_parse_int_from_qtytext(purchase_row['product_quantity']),
-                            'price': safe_parse_price(purchase_row['product_price']),
-                            'total': safe_parse_price(purchase_row['total_price'])
-                        })
-                
-                sales_data = []
-                for _, sales_row in sales_df.iterrows():
-                    if sales_row['product_name'] and str(sales_row['product_name']).strip().lower() == product_name.lower():
-                        sales_data.append({
-                            'tanggal': sales_row['date'],
-                            'timestamp': sales_row['timestamp'],
-                            'qty': safe_parse_int_from_qtytext(sales_row['product_quantity']),
-                            'price': safe_parse_price(sales_row['product_price']),
-                            'total': safe_parse_price(sales_row['total_sales'])
-                        })
-                
-                all_transactions = []
-                
-                for purchase in purchases_data:
-                    all_transactions.append({
-                        'tanggal': purchase['tanggal'],
-                        'timestamp': purchase['timestamp'],
-                        'type': 'Pembelian',
-                        'qty': purchase['qty'],
-                        'price': purchase['price'],
-                        'total': purchase['total']
-                    })
-                
-                for sale in sales_data:
-                    all_transactions.append({
-                        'tanggal': sale['tanggal'],
-                        'timestamp': sale['timestamp'],
-                        'type': 'Penjualan',
-                        'qty': -sale['qty'],
-                        'price': sale['price'],
-                        'total': sale['total']
-                    })
-                
-                all_transactions.sort(key=lambda x: (
-                    x['tanggal'] if x['tanggal'] else "0000-00-00",
-                    x['timestamp'] if x['timestamp'] else "00:00:00"
-                ))
-                
-                running_qty = 0
-                running_avg_price = 0
-                running_total = 0
-                
-                transaction_details = []
-                
-                for trans in all_transactions:
-                    if trans['type'] == 'Pembelian':
-                        if running_qty == 0:
-                            running_avg_price = trans['price']
-                        else:
-                            total_value_before = running_qty * running_avg_price
-                            total_value_new = trans['qty'] * trans['price']
-                            running_avg_price = (total_value_before + total_value_new) / (running_qty + trans['qty'])
-                        
-                        running_qty += trans['qty']
-                        running_total = running_qty * running_avg_price
+            for row in ws_inventory.iter_rows(min_row=2, values_only=True):
+                if row and row[0]:
+                    product_name = row[0]
+                    quantity_balance = row[1]  # Format: "10 kg"
+                    price_balance = safe_parse_price(row[2])
+                    total_balance = safe_parse_price(row[3])
                     
-                    elif trans['type'] == 'Penjualan':
-                        running_qty += trans['qty']
-                        running_total = running_qty * running_avg_price
+                    # Parse quantity balance
+                    qty_balance = safe_parse_int_from_qtytext(quantity_balance)
+                    unit_balance = str(quantity_balance).replace(str(qty_balance), "").strip()
                     
-                    display_time = ""
-                    if trans['timestamp']:
-                        try:
-                            if ' ' in trans['timestamp']:
-                                date_part, time_part = trans['timestamp'].split(' ')
-                                display_time = time_part
+                    # Ambil data pembelian untuk produk ini
+                    purchases_data = []
+                    for purchase_row in ws_purchases.iter_rows(min_row=2, values_only=True):
+                        if purchase_row and purchase_row[1] and str(purchase_row[1]).strip().lower() == product_name.lower():
+                            date = purchase_row[0]
+                            qty_purchase = safe_parse_int_from_qtytext(purchase_row[2])
+                            price_purchase = safe_parse_price(purchase_row[3])
+                            total_purchase = safe_parse_price(purchase_row[4])
+                            timestamp = purchase_row[5] if len(purchase_row) > 5 else ""
+                            
+                            purchases_data.append({
+                                'tanggal': date,
+                                'timestamp': timestamp,
+                                'qty': qty_purchase,
+                                'price': price_purchase,
+                                'total': total_purchase
+                            })
+                    
+                    # Ambil data penjualan untuk produk ini
+                    sales_data = []
+                    for sales_row in ws_sales.iter_rows(min_row=2, values_only=True):
+                        if sales_row and sales_row[1] and str(sales_row[1]).strip().lower() == product_name.lower():
+                            date = sales_row[0]
+                            qty_sales = safe_parse_int_from_qtytext(sales_row[2])
+                            price_sales = safe_parse_price(sales_row[3])
+                            total_sales = safe_parse_price(sales_row[4])
+                            timestamp = sales_row[5] if len(sales_row) > 5 else ""
+                            
+                            sales_data.append({
+                                'tanggal': date,
+                                'timestamp': timestamp,
+                                'qty': qty_sales,
+                                'price': price_sales,
+                                'total': total_sales
+                            })
+                    
+                    # Gabungkan semua transaksi
+                    all_transactions = []
+                    
+                    # Tambahkan pembelian
+                    for purchase in purchases_data:
+                        all_transactions.append({
+                            'tanggal': purchase['tanggal'],
+                            'timestamp': purchase['timestamp'],
+                            'type': 'Pembelian',
+                            'qty': purchase['qty'],
+                            'price': purchase['price'],
+                            'total': purchase['total']
+                        })
+                    
+                    # Tambahkan penjualan
+                    for sale in sales_data:
+                        all_transactions.append({
+                            'tanggal': sale['tanggal'],
+                            'timestamp': sale['timestamp'],
+                            'type': 'Penjualan',
+                            'qty': -sale['qty'],  # Negative untuk penjualan
+                            'price': sale['price'],
+                            'total': sale['total']
+                        })
+                    
+                    # Urutkan berdasarkan tanggal DAN timestamp
+                    all_transactions.sort(key=lambda x: (
+                        x['tanggal'] if x['tanggal'] else "0000-00-00",
+                        x['timestamp'] if x['timestamp'] else "00:00:00"
+                    ))
+                    
+                    # Hitung running balance dengan metode average
+                    running_qty = 0
+                    running_avg_price = 0
+                    running_total = 0
+                    
+                    transaction_details = []
+                    
+                    for trans in all_transactions:
+                        if trans['type'] == 'Pembelian':
+                            # Metode Average
+                            if running_qty == 0:
+                                running_avg_price = trans['price']
                             else:
+                                total_value_before = running_qty * running_avg_price
+                                total_value_new = trans['qty'] * trans['price']
+                                running_avg_price = (total_value_before + total_value_new) / (running_qty + trans['qty'])
+                            
+                            running_qty += trans['qty']
+                            running_total = running_qty * running_avg_price
+                        
+                        elif trans['type'] == 'Penjualan':
+                            # Untuk penjualan, harga pakai average price yang ada
+                            running_qty += trans['qty']  # trans['qty'] sudah negative
+                            running_total = running_qty * running_avg_price
+                        
+                        # Format timestamp untuk display
+                        display_time = ""
+                        if trans['timestamp']:
+                            try:
+                                if ' ' in trans['timestamp']:
+                                    date_part, time_part = trans['timestamp'].split(' ')
+                                    display_time = time_part
+                                else:
+                                    display_time = trans['timestamp']
+                            except:
                                 display_time = trans['timestamp']
-                        except:
-                            display_time = trans['timestamp']
+                        
+                        transaction_details.append({
+                            'Tanggal': trans['tanggal'],
+                            'Waktu': display_time,
+                            'Tipe': trans['type'],
+                            'Qty_Pembelian': trans['qty'] if trans['type'] == 'Pembelian' else 0,
+                            'Harga_Pembelian': format_rupiah(trans['price']) if trans['type'] == 'Pembelian' else '',
+                            'Total_Pembelian': format_rupiah(trans['total']) if trans['type'] == 'Pembelian' else '',
+                            'Qty_Penjualan': abs(trans['qty']) if trans['type'] == 'Penjualan' else 0,
+                            'Harga_Penjualan': format_rupiah(trans['price']) if trans['type'] == 'Penjualan' else '',
+                            'Total_Penjualan': format_rupiah(trans['total']) if trans['type'] == 'Penjualan' else '',
+                            'Qty_Balance': running_qty,
+                            'Harga_Balance': format_rupiah(running_avg_price),
+                            'Total_Balance': format_rupiah(running_total)
+                        })
                     
-                    transaction_details.append({
-                        'Tanggal': trans['tanggal'],
-                        'Waktu': display_time,
-                        'Tipe': trans['type'],
-                        'Qty_Pembelian': trans['qty'] if trans['type'] == 'Pembelian' else 0,
-                        'Harga_Pembelian': format_rupiah(trans['price']) if trans['type'] == 'Pembelian' else '',
-                        'Total_Pembelian': format_rupiah(trans['total']) if trans['type'] == 'Pembelian' else '',
-                        'Qty_Penjualan': abs(trans['qty']) if trans['type'] == 'Penjualan' else 0,
-                        'Harga_Penjualan': format_rupiah(trans['price']) if trans['type'] == 'Penjualan' else '',
-                        'Total_Penjualan': format_rupiah(trans['total']) if trans['type'] == 'Penjualan' else '',
-                        'Qty_Balance': running_qty,
-                        'Harga_Balance': format_rupiah(running_avg_price),
-                        'Total_Balance': format_rupiah(running_total)
+                    # Tambahkan balance akhir jika ada transaksi
+                    if not transaction_details and qty_balance > 0:
+                        transaction_details.append({
+                            'Tanggal': '-',
+                            'Waktu': '',
+                            'Tipe': 'Balance Awal',
+                            'Qty_Pembelian': 0,
+                            'Harga_Pembelian': '',
+                            'Total_Pembelian': '',
+                            'Qty_Penjualan': 0,
+                            'Harga_Penjualan': '',
+                            'Total_Penjualan': '',
+                            'Qty_Balance': qty_balance,
+                            'Harga_Balance': format_rupiah(price_balance),
+                            'Total_Balance': format_rupiah(total_balance)
+                        })
+                    
+                    products.append({
+                        'product_name': product_name,
+                        'unit': unit_balance,
+                        'current_stock': qty_balance,
+                        'current_value': total_balance,
+                        'transactions': transaction_details
                     })
-                
-                if not transaction_details and qty_balance > 0:
-                    transaction_details.append({
-                        'Tanggal': '-',
-                        'Waktu': '',
-                        'Tipe': 'Balance Awal',
-                        'Qty_Pembelian': 0,
-                        'Harga_Pembelian': '',
-                        'Total_Pembelian': '',
-                        'Qty_Penjualan': 0,
-                        'Harga_Penjualan': '',
-                        'Total_Penjualan': '',
-                        'Qty_Balance': qty_balance,
-                        'Harga_Balance': format_rupiah(price_balance),
-                        'Total_Balance': format_rupiah(total_balance)
-                    })
-                
-                products.append({
-                    'product_name': product_name,
-                    'unit': unit_balance,
-                    'current_stock': qty_balance,
-                    'current_value': total_balance,
-                    'transactions': transaction_details
-                })
             
+            wb.close()
+            
+            # Tampilkan summary persediaan
             st.markdown("### 📈 Summary Persediaan")
             if products:
                 summary_data = []
@@ -1233,12 +1268,14 @@ def show_kartu_persediaan():
                 
                 st.metric("Total Nilai Persediaan", format_rupiah(total_inventory_value))
                 
+                # Tampilkan detail kartu persediaan per produk
                 st.markdown("### 📋 Detail Kartu Persediaan per Produk")
                 for product in products:
                     with st.expander(f"📦 {product['product_name']} ({product['unit']}) - Stok: {product['current_stock']}"):
                         if product['transactions']:
                             df_detail = pd.DataFrame(product['transactions'])
                             
+                            # Rename kolom untuk tampilan yang lebih baik
                             df_display = df_detail.rename(columns={
                                 'Qty_Pembelian': 'Qty Pembelian',
                                 'Harga_Pembelian': 'Harga/Unit Pembelian', 
@@ -1260,34 +1297,71 @@ def show_kartu_persediaan():
         except Exception as e:
             st.error(f"❌ Error loading inventory data: {e}")
 
+# Fungsi helper (pastikan fungsi-fungsi ini ada)
+def safe_parse_price(price_value):
+    """Parse price value safely"""
+    if price_value is None:
+        return 0.0
+    try:
+        if isinstance(price_value, (int, float)):
+            return float(price_value)
+        price_str = str(price_value).replace('Rp', '').replace('.', '').replace(',', '.').strip()
+        return float(price_str) if price_str else 0.0
+    except:
+        return 0.0
+
+def safe_parse_int_from_qtytext(qty_text):
+    """Parse integer from quantity text like '10 kg'"""
+    if qty_text is None:
+        return 0
+    try:
+        if isinstance(qty_text, (int, float)):
+            return int(qty_text)
+        parts = str(qty_text).split()
+        return int(parts[0]) if parts else 0
+    except:
+        return 0
+
+def format_rupiah(amount):
+    """Format number to Rupiah currency"""
+    try:
+        if amount == 0:
+            return "Rp 0"
+        return f"Rp {amount:,.0f}".replace(",", ".")
+    except:
+        return "Rp 0"
+
 def show_ringkasan_penjualan():
     st.markdown('<div class="main-header"><h1>📈 Ringkasan Penjualan</h1></div>', unsafe_allow_html=True)
     
     try:
-        sales_df = get_sales_data()
-        inventory_df = get_inventory_data()
+        wb = openpyxl.load_workbook('databasesia.xlsx')
+        ws_sales = wb['Sales']
+        ws_inventory = wb['Inventory']
         
+        # Get HPP from inventory
         HPP_dict = {}
-        for _, row in inventory_df.iterrows():
-            if row['product_name']:
-                product_name = row['product_name']
-                HPP_price = safe_parse_price(row['product_price'])
+        for row in ws_inventory.iter_rows(min_row=2, values_only=True):
+            if row and row[0]:
+                product_name = row[0]
+                HPP_price = safe_parse_price(row[2])
                 HPP_dict[product_name] = HPP_price
         
+        # Process sales data
         data = []
         total_income_all = 0.0
         total_HPP_all = 0.0
         total_profit_all = 0.0
         
-        for _, row in sales_df.iterrows():
-            if row['product_name'] is None:
+        for row in ws_sales.iter_rows(min_row=2, values_only=True):
+            if not row or row[1] is None:
                 continue
             
-            date = row['date']
-            product_name = row['product_name']
-            qty_text = row['product_quantity']
-            selling_price_unit = safe_parse_price(row['product_price'])
-            total_income = safe_parse_price(row['total_sales'])
+            date = row[0]
+            product_name = row[1]
+            qty_text = row[2]
+            selling_price_unit = safe_parse_price(row[3])
+            total_income = safe_parse_price(row[4])
             
             qty = safe_parse_int_from_qtytext(qty_text)
             HPP_unit = HPP_dict.get(product_name, 0)
@@ -1309,10 +1383,13 @@ def show_ringkasan_penjualan():
                 'Gross Profit': format_rupiah(gross_profit)
             })
         
+        wb.close()
+        
         if data:
             df = pd.DataFrame(data)
             st.dataframe(df, use_container_width=True, hide_index=True)
             
+            # Summary
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -1345,16 +1422,36 @@ def show_ringkasan_penjualan():
     except Exception as e:
         st.error(f"Error: {e}")
 
+def create_journal_workbook():
+    """Create journal_ledger.xlsx if not exists"""
+    if not os.path.exists('journal_ledger.xlsx'):
+        wb = Workbook()
+        
+        # Jurnal Umum sheet
+        ws_journal = wb.active
+        ws_journal.title = "Jurnal Umum"
+        ws_journal.append(["Tanggal", "Akun", "Debit", "Kredit", "Keterangan"])
+        
+        # Buku Besar sheet
+        ws_ledger = wb.create_sheet("Buku Besar")
+        ws_ledger.append(["Akun", "Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"])
+        
+        wb.save('journal_ledger.xlsx')
+
 def show_jurnal_umum():
     st.markdown('<div class="main-header"><h1>📒 Input Jurnal Umum</h1></div>', unsafe_allow_html=True)
     
+    create_journal_workbook()
+    
     st.markdown("### Input Transaksi Baru")
     
+    # Initialize session state untuk dynamic form
     if 'debit_accounts' not in st.session_state:
         st.session_state.debit_accounts = [{'account': '', 'amount': 0}]
     if 'credit_accounts' not in st.session_state:
         st.session_state.credit_accounts = [{'account': '', 'amount': 0}]
     
+    # Tombol tambah akun di LUAR form
     col1, col2 = st.columns(2)
     with col1:
         if st.button("➕ Tambah Akun Debit", key="add_debit"):
@@ -1370,11 +1467,13 @@ def show_jurnal_umum():
         
         st.markdown("**Akun Debit**")
         
+        # Display debit accounts
         for i in range(len(st.session_state.debit_accounts)):
             st.markdown(f"**Debit {i+1}**")
             col_acc, col_amt, col_del = st.columns([2, 1, 0.5])
             with col_acc:
                 account_options = [f"{code} - {name}" for code, name in ACCOUNTS.items()]
+                # Cari index akun yang dipilih
                 current_account = st.session_state.debit_accounts[i]['account']
                 default_index = account_options.index(current_account) if current_account in account_options else 0
                 
@@ -1394,7 +1493,8 @@ def show_jurnal_umum():
                 )
                 st.session_state.debit_accounts[i]['amount'] = amount
             with col_del:
-                if i > 0:
+                if i > 0:  # Hanya tampilkan tombol hapus untuk akun tambahan
+                    # Gunakan form_submit_button dengan type secondary untuk tombol hapus
                     if st.form_submit_button("❌", type="secondary", key=f"del_debit_{i}"):
                         st.session_state.debit_accounts.pop(i)
                         st.rerun()
@@ -1402,11 +1502,13 @@ def show_jurnal_umum():
         st.markdown("---")
         st.markdown("**Akun Kredit**")
         
+        # Display credit accounts
         for i in range(len(st.session_state.credit_accounts)):
             st.markdown(f"**Kredit {i+1}**")
             col_acc, col_amt, col_del = st.columns([2, 1, 0.5])
             with col_acc:
                 account_options = [f"{code} - {name}" for code, name in ACCOUNTS.items()]
+                # Cari index akun yang dipilih
                 current_account = st.session_state.credit_accounts[i]['account']
                 default_index = account_options.index(current_account) if current_account in account_options else 0
                 
@@ -1426,7 +1528,8 @@ def show_jurnal_umum():
                 )
                 st.session_state.credit_accounts[i]['amount'] = amount
             with col_del:
-                if i > 0:
+                if i > 0:  # Hanya tampilkan tombol hapus untuk akun tambahan
+                    # Gunakan form_submit_button dengan type secondary untuk tombol hapus
                     if st.form_submit_button("❌", type="secondary", key=f"del_credit_{i}"):
                         st.session_state.credit_accounts.pop(i)
                         st.rerun()
@@ -1437,9 +1540,11 @@ def show_jurnal_umum():
         submit = st.form_submit_button("💾 Simpan Jurnal", use_container_width=True)
         
         if submit:
+            # Filter hanya akun yang memiliki nominal > 0
             valid_debit_accounts = [acc for acc in st.session_state.debit_accounts if acc['amount'] > 0 and acc['account']]
             valid_credit_accounts = [acc for acc in st.session_state.credit_accounts if acc['amount'] > 0 and acc['account']]
             
+            # Validation
             total_debit = sum(item['amount'] for item in valid_debit_accounts)
             total_credit = sum(item['amount'] for item in valid_credit_accounts)
             
@@ -1451,49 +1556,105 @@ def show_jurnal_umum():
                 st.error("Harap isi minimal satu akun debit dan satu akun kredit")
             else:
                 try:
+                    wb = load_workbook('journal_ledger.xlsx')
+                    ws_journal = wb['Jurnal Umum']
+                    ws_ledger = wb['Buku Besar']
+                    
                     date_str = date.strftime('%Y-%m-%d')
                     
-                    ledger_df = get_ledger_data()
-                    current_balances = {}
-                    
-                    for _, row in ledger_df.iterrows():
-                        account = row['account']
-                        saldo = safe_parse_price(row['balance']) if row['balance'] else 0
-                        current_balances[account] = saldo
-                    
+                    # 1. SIMPAN KE JURNAL UMUM
+                    # Baris pertama: akun debit pertama dengan keterangan
                     if valid_debit_accounts:
                         first_debit = valid_debit_accounts[0]
-                        add_journal_entry(date_str, first_debit['account'], first_debit['amount'], 0, keterangan)
+                        ws_journal.append([
+                            date_str,
+                            first_debit['account'],
+                            first_debit['amount'],  # Debit
+                            0,  # Kredit = 0 untuk akun debit
+                            keterangan  # Keterangan hanya di baris pertama
+                        ])
                     
+                    # Baris untuk akun debit lainnya (tanpa keterangan)
                     for i in range(1, len(valid_debit_accounts)):
                         debit = valid_debit_accounts[i]
-                        add_journal_entry("", debit['account'], debit['amount'], 0, "")
+                        ws_journal.append([
+                            "",  # Tanggal kosong
+                            debit['account'],
+                            debit['amount'],  # Debit
+                            0,  # Kredit = 0
+                            ""  # Keterangan kosong
+                        ])
                     
+                    # Baris untuk akun kredit (semua tanpa keterangan)
                     for credit in valid_credit_accounts:
-                        add_journal_entry("", credit['account'], 0, credit['amount'], "")
+                        ws_journal.append([
+                            "",  # Tanggal kosong
+                            credit['account'],
+                            0,  # Debit = 0 untuk akun kredit
+                            credit['amount'],  # Kredit
+                            ""  # Keterangan kosong
+                        ])
                     
+                    # Tambah baris kosong untuk pemisah antar transaksi
+                    ws_journal.append(["", "", "", "", ""])
+                    
+                    # 2. SIMPAN KE BUKU BESAR (LEDGER)
+                    # Hitung saldo akhir untuk setiap akun sebelum transaksi ini
+                    current_balances = {}
+                    for row in ws_ledger.iter_rows(min_row=2, values_only=True):
+                        if row and row[0]:  # Jika ada akun
+                            account = row[0]
+                            debit = safe_parse_price(row[3]) if row[3] else 0
+                            kredit = safe_parse_price(row[4]) if row[4] else 0
+                            saldo = safe_parse_price(row[5]) if row[5] else 0
+                            
+                            if account not in current_balances:
+                                current_balances[account] = saldo
+                    
+                    # Catat transaksi debit ke Buku Besar
                     for debit in valid_debit_accounts:
                         account = debit['account']
                         nominal = debit['amount']
                         
+                        # Hitung saldo baru
                         current_balance = current_balances.get(account, 0)
                         new_balance = current_balance + nominal
                         current_balances[account] = new_balance
                         
-                        add_ledger_entry(account, date_str, keterangan, nominal, 0, new_balance)
+                        ws_ledger.append([
+                            account,
+                            date_str,
+                            keterangan,
+                            nominal,  # Debit
+                            0,  # Kredit = 0
+                            new_balance
+                        ])
                     
+                    # Catat transaksi kredit ke Buku Besar
                     for credit in valid_credit_accounts:
                         account = credit['account']
                         nominal = credit['amount']
                         
+                        # Hitung saldo baru
                         current_balance = current_balances.get(account, 0)
                         new_balance = current_balance - nominal
                         current_balances[account] = new_balance
                         
-                        add_ledger_entry(account, date_str, keterangan, 0, nominal, new_balance)
+                        ws_ledger.append([
+                            account,
+                            date_str,
+                            keterangan,
+                            0,  # Debit = 0
+                            nominal,  # Kredit
+                            new_balance
+                        ])
+                    
+                    wb.save('journal_ledger.xlsx')
+                    wb.close()
                     
                     st.success("✅ Jurnal berhasil disimpan ke Jurnal Umum dan Buku Besar!")
                     
+                    # Reset form setelah berhasil simpan
                     st.session_state.debit_accounts = [{'account': '', 'amount': 0}]
                     st.session_state.credit_accounts = [{'account': '', 'amount': 0}]
                     st.rerun()
@@ -1505,23 +1666,31 @@ def show_view_jurnal():
     st.markdown('<div class="main-header"><h1>📖 Lihat Jurnal Umum</h1></div>', unsafe_allow_html=True)
 
     try:
-        journal_df = get_journal_data()
+        wb = load_workbook('journal_ledger.xlsx')
+        ws = wb['Jurnal Umum']
 
-        if not journal_df.empty:
-            data = []
-            for _, row in journal_df.iterrows():
+        data = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if any(row[:4]):  # Skip baris yang benar-benar kosong
+                tanggal, akun, debit, kredit, keterangan = row
                 data.append({
-                    'Tanggal': row['date'] or '',
-                    'Akun': row['account'] or '',
-                    'Debit': format_rupiah(row['debit']) if row['debit'] else '',
-                    'Kredit': format_rupiah(row['credit']) if row['credit'] else '',
-                    'Keterangan': row['description'] or ''
+                    'Tanggal': tanggal or '',
+                    'Akun': akun or '',
+                    'Debit': format_rupiah(debit) if debit else '',
+                    'Kredit': format_rupiah(kredit) if kredit else '',
+                    'Keterangan': keterangan or ''
                 })
 
-            total_debit = journal_df['debit'].sum()
-            total_kredit = journal_df['credit'].sum()
+        # Hitung total before closing workbook
+        total_debit = sum(safe_parse_price(row[2]) for row in ws.iter_rows(min_row=2, values_only=True) if row and row[2])
+        total_kredit = sum(safe_parse_price(row[3]) for row in ws.iter_rows(min_row=2, values_only=True) if row and row[3])
 
+        wb.close()
+
+        if data:
             df = pd.DataFrame(data)
+
+            # Styling untuk tampilan yang lebih baik
             st.dataframe(
                 df,
                 use_container_width=True,
@@ -1535,13 +1704,14 @@ def show_view_jurnal():
             with col2:
                 st.metric("Total Kredit", format_rupiah(total_kredit))
             with col3:
-                if abs(total_debit - total_kredit) < 0.01:
+                if total_debit == total_kredit:
                     st.success("✅ Jurnal Balance!")
                 else:
                     st.error("❌ Jurnal Tidak Balance!")
 
+            # Export option
             st.download_button(
-                label="📥 Export ke CSV",
+                label="📥 Export ke Excell",
                 data=df.to_csv(index=False).encode('utf-8'),
                 file_name=f"jurnal_umum_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
@@ -1553,11 +1723,19 @@ def show_view_jurnal():
     except Exception as e:
         st.error(f"Error: {e}")
 
+    # Tombol untuk clear data
     st.markdown("---")
     if st.button("🗑️ Hapus Semua Data Jurnal", type="secondary", use_container_width=True):
         try:
-            clear_table('journal')
-            clear_table('ledger')
+            wb = Workbook()
+            ws_journal = wb.active
+            ws_journal.title = "Jurnal Umum"
+            ws_journal.append(["Tanggal", "Akun", "Debit", "Kredit", "Keterangan"])
+
+            ws_ledger = wb.create_sheet("Buku Besar")
+            ws_ledger.append(["Akun", "Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"])
+
+            wb.save('journal_ledger.xlsx')
             st.success("Data jurnal berhasil direset!")
             st.rerun()
         except Exception as e:
@@ -1566,20 +1744,81 @@ def show_view_jurnal():
 def show_buku_besar():
     st.markdown('<div class="main-header"><h1>📚 Buku Besar</h1></div>', unsafe_allow_html=True)
     
+    # Pastikan file sudah ada sebelum memuat
+    create_journal_workbook()
+    
     try:
-        ledger_df = get_ledger_data()
+        wb = load_workbook('journal_ledger.xlsx')
         
-        if not ledger_df.empty:
-            # Recalculate balances
-            account_data = {}
-            for _, row in ledger_df.iterrows():
-                account = row['account']
+        # Cek apakah sheet Buku Besar ada
+        if 'Buku Besar' not in wb.sheetnames:
+            # Buat sheet Buku Besar jika tidak ada
+            ws_ledger = wb.create_sheet("Buku Besar")
+            ws_ledger.append(["Akun", "Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"])
+            wb.save('journal_ledger.xlsx')
+            st.info("Sheet Buku Besar berhasil dibuat")
+        
+        ws = wb['Buku Besar']
+        
+        # OTOMATIS HITUNG ULANG SEMUA SALDO
+        # Kelompokkan data per akun
+        account_data = {}
+        for row in ws.iter_rows(min_row=2):
+            account = row[0].value
+            if account and account != "":
                 if account not in account_data:
                     account_data[account] = []
                 account_data[account].append(row)
+        
+        # Hitung ulang saldo untuk setiap akun dan update di Excel
+        saldo_updated = False
+        for account, rows in account_data.items():
+            running_balance = 0.0
+            for row in rows:
+                debit = row[3].value or 0.0
+                kredit = row[4].value or 0.0
+                running_balance = running_balance + debit - kredit
+                
+                # Cek jika saldo perlu diupdate
+                current_saldo = row[5].value or 0.0
+                if abs(current_saldo - running_balance) > 0.01:  # Toleransi 0.01
+                    row[5].value = running_balance
+                    saldo_updated = True
+        
+        # Simpan jika ada perubahan
+        if saldo_updated:
+            wb.save('journal_ledger.xlsx')
+            st.success("✅ Saldo berhasil dihitung ulang secara otomatis!")
+        
+        # Sekarang baca data yang sudah diupdate
+        wb = load_workbook('journal_ledger.xlsx')
+        ws = wb['Buku Besar']
+        
+        # Kumpulkan data per akun untuk ditampilkan
+        ledger_entries = {}
+        
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+                continue
             
-            # Display ledger by account
-            for account, entries in account_data.items():
+            account, date, keterangan, debit, kredit, saldo = row
+            
+            if account and account != "":  # Pastikan akun tidak kosong
+                if account not in ledger_entries:
+                    ledger_entries[account] = []
+                
+                ledger_entries[account].append({
+                    "Tanggal": date if date else "",
+                    "Keterangan": keterangan if keterangan else "",
+                    "Debit": debit if debit else 0.0,
+                    "Kredit": kredit if kredit else 0.0,
+                    "Saldo": saldo if saldo else 0.0
+                })
+        
+        wb.close()
+        
+        if ledger_entries:
+            for account, entries in ledger_entries.items():
                 try:
                     account_num, account_name = account.split(" - ", 1)
                 except:
@@ -1588,18 +1827,21 @@ def show_buku_besar():
                 
                 st.markdown(f"### {account_name} ({account_num})")
                 
+                # Tentukan jenis akun untuk format saldo
                 account_code = account_num.split()[0] if ' ' in account_num else account_num
-                is_credit_account = account_code.startswith(('2', '3', '4'))
+                is_credit_account = account_code.startswith(('2', '3', '4'))  # Liability, Equity, Revenue
                 
+                # Format data untuk dataframe
                 table_data = []
                 for entry in entries:
-                    display_saldo = abs(entry['balance']) if is_credit_account else entry['balance']
+                    # Untuk akun kredit, tampilkan saldo sebagai positif
+                    display_saldo = abs(entry['Saldo']) if is_credit_account else entry['Saldo']
                     
                     table_data.append({
-                        'Tanggal': entry['date'],
-                        'Keterangan': entry['description'],
-                        'Debit': format_rupiah(entry['debit']) if entry['debit'] else '',
-                        'Kredit': format_rupiah(entry['credit']) if entry['credit'] else '',
+                        'Tanggal': entry['Tanggal'],
+                        'Keterangan': entry['Keterangan'],
+                        'Debit': format_rupiah(entry['Debit']) if entry['Debit'] else '',
+                        'Kredit': format_rupiah(entry['Kredit']) if entry['Kredit'] else '',
                         'Saldo': format_rupiah(display_saldo)
                     })
                 
@@ -1607,13 +1849,23 @@ def show_buku_besar():
                     df = pd.DataFrame(table_data)
                     st.dataframe(df, use_container_width=True, hide_index=True)
                     
-                    ending_balance = entries[-1]['balance'] if entries else 0
+                    # Tampilkan saldo akhir dengan format yang benar
+                    ending_balance = entries[-1]['Saldo'] if entries else 0
                     display_ending_balance = abs(ending_balance) if is_credit_account else ending_balance
                     
+                    # Tentukan warna berdasarkan jenis akun
+                    if is_credit_account:
+                        # Untuk akun kredit, saldo normalnya kredit (positif)
+                        balance_color = "#10b981"  # Hijau untuk saldo normal
+                    else:
+                        # Untuk akun debit, saldo normalnya debit (positif)
+                        balance_color = "#10b981" if ending_balance >= 0 else "#10b981"
+                    
+                    # Tampilkan jenis saldo
                     saldo_type = "Kredit" if is_credit_account else "Debit"
                     
                     st.markdown(f"""
-                    <div style="background: #10b981; color: white; padding: 0.5rem 1rem; border-radius: 5px; margin-bottom: 1rem;">
+                    <div style="background: {balance_color}; color: white; padding: 0.5rem 1rem; border-radius: 5px; margin-bottom: 1rem;">
                         <strong>Saldo Akhir: {format_rupiah(display_ending_balance)} ({saldo_type})</strong>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1627,10 +1879,19 @@ def show_buku_besar():
     except Exception as e:
         st.error(f"Error: {e}")
 
+    # Tombol untuk reset data buku besar saja
     st.markdown("---")
     if st.button("🗑️ Reset Data Buku Besar", type="secondary", use_container_width=True):
         try:
-            clear_table('ledger')
+            wb = Workbook()
+            ws_journal = wb.active
+            ws_journal.title = "Jurnal Umum"
+            ws_journal.append(["Tanggal", "Akun", "Debit", "Kredit", "Keterangan"])
+            
+            ws_ledger = wb.create_sheet("Buku Besar")
+            ws_ledger.append(["Akun", "Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"])
+            
+            wb.save('journal_ledger.xlsx')
             st.success("Data buku besar berhasil direset!")
             st.rerun()
         except Exception as e:
@@ -1640,87 +1901,108 @@ def show_neraca_saldo():
     st.markdown('<div class="main-header"><h1>⚖️ Neraca Saldo</h1></div>', unsafe_allow_html=True)
     
     try:
-        ledger_df = get_ledger_data()
+        wb = load_workbook('journal_ledger.xlsx')
+        ws = wb['Buku Besar']
         
-        if not ledger_df.empty:
-            account_balances = {}
+        neraca_data = []
+        
+        # Kumpulkan semua akun unik dan ambil saldo terakhir
+        account_balances = {}
+        
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+                continue
             
-            for _, row in ledger_df.iterrows():
-                account = row['account']
-                if account not in account_balances:
-                    try:
-                        account_num, account_name = account.split(" - ", 1)
-                    except:
-                        account_num = account
-                        account_name = account
-                    
-                    account_balances[account] = {
-                        'account_num': account_num,
-                        'account_name': account_name,
-                        'latest_saldo': 0.0
-                    }
-                
-                if row['balance'] is not None:
-                    account_balances[account]['latest_saldo'] = row['balance']
+            account, date, keterangan, debit, kredit, saldo = row
             
-            table_data = []
-            total_debit = 0.0
-            total_kredit = 0.0
+            if account is None or account == "":
+                continue
             
-            for account, data in account_balances.items():
-                saldo = data['latest_saldo']
+            # Simpan saldo terakhir untuk setiap akun
+            if account not in account_balances:
+                try:
+                    account_num, account_name = account.split(" - ", 1)
+                except:
+                    account_num = account
+                    account_name = account
                 
-                if saldo >= 0:
-                    debit_amount = saldo
-                    kredit_amount = 0.0
-                else:
-                    debit_amount = 0.0
-                    kredit_amount = abs(saldo)
-                
-                total_debit += debit_amount
-                total_kredit += kredit_amount
-                
-                table_data.append({
-                    'No Akun': data['account_num'],
-                    'Nama Akun': data['account_name'],
-                    'Debit': format_rupiah(debit_amount) if debit_amount > 0 else '',
-                    'Kredit': format_rupiah(kredit_amount) if kredit_amount > 0 else ''
-                })
+                account_balances[account] = {
+                    'account_num': account_num,
+                    'account_name': account_name,
+                    'latest_saldo': 0.0
+                }
             
-            table_data.sort(key=lambda x: x['No Akun'])
+            # Update saldo terakhir jika ada nilai saldo
+            if saldo is not None:
+                account_balances[account]['latest_saldo'] = saldo
+        
+        wb.close()
+        
+        # Konversi ke format neraca saldo
+        table_data = []
+        total_debit = 0.0
+        total_kredit = 0.0
+        
+        for account, data in account_balances.items():
+            saldo = data['latest_saldo']
             
-            if table_data:
-                df = pd.DataFrame(table_data)
-                
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "No Akun": st.column_config.TextColumn("No Akun", width="small"),
-                        "Nama Akun": st.column_config.TextColumn("Nama Akun", width="medium"),
-                        "Debit": st.column_config.TextColumn("Debit", width="medium"),
-                        "Kredit": st.column_config.TextColumn("Kredit", width="medium")
-                    }
-                )
-                
-                st.markdown("---")
-                col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
-                with col1:
-                    st.markdown("**TOTAL**")
-                with col2:
-                    st.markdown("")
-                with col3:
-                    st.markdown(f"**{format_rupiah(total_debit)}**")
-                with col4:
-                    st.markdown(f"**{format_rupiah(total_kredit)}**")
-                
-                is_balanced = abs(total_debit - total_kredit) < 0.01
-                st.markdown("---")
-                if is_balanced:
-                    st.success("✅ NERACA SALDO SEIMBANG")
-                else:
-                    st.error(f"❌ NERACA SALDO TIDAK SEIMBANG - Selisih: {format_rupiah(abs(total_debit - total_kredit))}")
+            # LOGIKA SEDERHANA:
+            # Saldo positif → Debit, Saldo negatif → Kredit
+            if saldo >= 0:
+                debit_amount = saldo
+                kredit_amount = 0.0
+            else:
+                debit_amount = 0.0
+                kredit_amount = abs(saldo)
+            
+            total_debit += debit_amount
+            total_kredit += kredit_amount
+            
+            table_data.append({
+                'No Akun': data['account_num'],
+                'Nama Akun': data['account_name'],
+                'Debit': format_rupiah(debit_amount) if debit_amount > 0 else '',
+                'Kredit': format_rupiah(kredit_amount) if kredit_amount > 0 else ''
+            })
+        
+        # Urutkan berdasarkan nomor akun
+        table_data.sort(key=lambda x: x['No Akun'])
+        
+        if table_data:
+            df = pd.DataFrame(table_data)
+            
+            # Tampilkan dataframe dengan kolom sesuai permintaan
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "No Akun": st.column_config.TextColumn("No Akun", width="small"),
+                    "Nama Akun": st.column_config.TextColumn("Nama Akun", width="medium"),
+                    "Debit": st.column_config.TextColumn("Debit", width="medium"),
+                    "Kredit": st.column_config.TextColumn("Kredit", width="medium")
+                }
+            )
+            
+            # Total row dengan layout yang lebih baik
+            st.markdown("---")
+            col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+            with col1:
+                st.markdown("**TOTAL**")
+            with col2:
+                st.markdown("")  # Spacer untuk Nama Akun
+            with col3:
+                st.markdown(f"**{format_rupiah(total_debit)}**")
+            with col4:
+                st.markdown(f"**{format_rupiah(total_kredit)}**")
+            
+            # Balance check
+            is_balanced = abs(total_debit - total_kredit) < 0.01
+            st.markdown("---")
+            if is_balanced:
+                st.success("✅ NERACA SALDO SEIMBANG")
+            else:
+                st.error(f"❌ NERACA SALDO TIDAK SEIMBANG - Selisih: {format_rupiah(abs(total_debit - total_kredit))}")
         else:
             st.info("Belum ada data neraca saldo. Silakan input transaksi di menu Jurnal Umum terlebih dahulu.")
     
@@ -1729,6 +2011,7 @@ def show_neraca_saldo():
 
 def show_jurnal_penyesuaian():
     st.markdown('<div class="main-header"><h1>📘 Input Jurnal Penyesuaian</h1></div>', unsafe_allow_html=True)
+    create_journal_workbook() 
     
     st.markdown("### Input Jurnal Penyesuaian Baru")
     
@@ -1835,27 +2118,48 @@ def show_jurnal_penyesuaian():
                 st.error("Keterangan penyesuaian harus diisi")
             else:
                 try:
-                    date_str = date.strftime('%Y-%m-%d')
-                    keterangan_with_label = f"[PENYESUAIAN] {keterangan}"
-
-                    ledger_df = get_ledger_data()
-                    current_balances = {}
+                    wb = load_workbook('journal_ledger.xlsx')
+                    ws_journal = wb['Jurnal Umum']
+                    ws_ledger = wb['Buku Besar']
                     
-                    for _, row in ledger_df.iterrows():
-                        account = row['account']
-                        saldo = safe_parse_price(row['balance']) if row['balance'] else 0
-                        current_balances[account] = saldo
+                    date_str = date.strftime('%Y-%m-%d')
+                    
+                    keterangan_with_label = f"[PENYESUAIAN] {keterangan}"
 
                     if valid_debit_accounts:
                         first_debit = valid_debit_accounts[0]
-                        add_journal_entry(date_str, first_debit['account'], first_debit['amount'], 0, keterangan_with_label, 'Adjusting')
+                        ws_journal.append([
+                            date_str,
+                            first_debit['account'],
+                            first_debit['amount'], 
+                            0,keterangan_with_label 
+                        ])
 
                     for i in range(1, len(valid_debit_accounts)):
                         debit = valid_debit_accounts[i]
-                        add_journal_entry("", debit['account'], debit['amount'], 0, "", 'Adjusting')
+                        ws_journal.append([
+                            "",debit['account'],
+                            debit['amount'],0,"" 
+                        ])
 
                     for credit in valid_credit_accounts:
-                        add_journal_entry("", credit['account'], 0, credit['amount'], "", 'Adjusting')
+                        ws_journal.append([
+                            "",credit['account'],
+                            0,credit['amount'],""
+                        ])
+                    
+                    ws_journal.append(["", "", "", "", ""])
+                    
+                    current_balances = {}
+                    for row in ws_ledger.iter_rows(min_row=2, values_only=True):
+                        if row and row[0]: 
+                            account = row[0]
+                            debit = safe_parse_price(row[3]) if row[3] else 0
+                            kredit = safe_parse_price(row[4]) if row[4] else 0
+                            saldo = safe_parse_price(row[5]) if row[5] else 0
+                            
+                            if account not in current_balances:
+                                current_balances[account] = saldo
 
                     for debit in valid_debit_accounts:
                         account = debit['account']
@@ -1865,7 +2169,12 @@ def show_jurnal_penyesuaian():
                         new_balance = current_balance + nominal
                         current_balances[account] = new_balance
                         
-                        add_ledger_entry(account, date_str, keterangan_with_label, nominal, 0, new_balance)
+                        ws_ledger.append([
+                            account,
+                            date_str,
+                            keterangan_with_label,
+                            nominal,0,new_balance
+                        ])
                     
                     for credit in valid_credit_accounts:
                         account = credit['account']
@@ -1875,7 +2184,16 @@ def show_jurnal_penyesuaian():
                         new_balance = current_balance - nominal
                         current_balances[account] = new_balance
                         
-                        add_ledger_entry(account, date_str, keterangan_with_label, 0, nominal, new_balance)
+                        ws_ledger.append([
+                            account,
+                            date_str,
+                            keterangan_with_label,
+                            0,nominal,
+                            new_balance
+                        ])
+                    
+                    wb.save('journal_ledger.xlsx')
+                    wb.close()
                     
                     st.success("✅ Jurnal Penyesuaian berhasil disimpan ke Jurnal Umum dan Buku Besar!")
                     
@@ -1885,10 +2203,6 @@ def show_jurnal_penyesuaian():
                 
                 except Exception as e:
                     st.error(f"Error: {e}")
-
-# Note: Untuk fungsi-fungsi laporan keuangan (show_laporan_keuangan, show_laba_rugi, show_perubahan_modal, show_neraca)
-# Anda perlu mengadaptasinya untuk menggunakan fungsi database SQLite yang sesuai.
-# Karena keterbatasan panjang, saya akan memberikan template untuk fungsi-fungsi tersebut:
 
 def show_laporan_keuangan():
     st.markdown('<div class="main-header"><h1>📋 Laporan Keuangan</h1></div>', unsafe_allow_html=True)
@@ -1920,17 +2234,173 @@ def show_laba_rugi():
         st.rerun()
     
     try:
-        ledger_df = get_ledger_data()
+        wb = load_workbook('journal_ledger.xlsx')
+        ws = wb['Buku Besar']
         
-        if ledger_df.empty:
-            st.info("Belum ada data untuk membuat laporan laba rugi")
-            return
+        # Kumpulkan semua akun dan saldo terakhir
+        account_balances = {}
         
-        # Implementasi logika laporan laba rugi menggunakan data dari SQLite
-        # ... (logika yang sama seperti sebelumnya, tetapi menggunakan ledger_df)
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+                continue
+            
+            account, date, keterangan, debit, kredit, saldo = row
+            
+            if account is None or account == "":
+                continue
+            
+            # Simpan saldo terakhir untuk setiap akun
+            if account not in account_balances:
+                try:
+                    account_num, account_name = account.split(" - ", 1)
+                except:
+                    account_num = account
+                    account_name = account
+                
+                account_balances[account] = {
+                    'account_num': account_num.strip(),
+                    'account_name': account_name,
+                    'latest_saldo': 0.0
+                }
+            
+            # Update saldo terakhir jika ada nilai saldo
+            if saldo is not None:
+                account_balances[account]['latest_saldo'] = saldo
         
-        st.info("Fungsi laporan laba rugi sedang dalam pengembangan menggunakan database SQLite")
+        wb.close()
         
+        # Kelompokkan akun berdasarkan kategori
+        pendapatan_akun = []
+        hpp_akun = []
+        beban_akun = []
+        
+        for account, data in account_balances.items():
+            account_num = data['account_num']
+            saldo = data['latest_saldo']
+            
+            # Ambil kode utama (angka sebelum - atau spasi)
+            if '-' in account_num:
+                main_code = account_num.split('-')[0].strip()
+            elif ' ' in account_num:
+                main_code = account_num.split()[0].strip()
+            else:
+                main_code = account_num
+            
+            # Klasifikasi akun berdasarkan kode
+            if main_code.startswith('4'):  # Pendapatan
+                pendapatan_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)  # Untuk akun pendapatan, ambil nilai absolut
+                })
+            elif main_code.startswith('5'):  # HPP
+                hpp_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)  # Untuk akun HPP, ambil nilai absolut
+                })
+            elif main_code.startswith('6'):  # Beban
+                beban_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)  # Untuk akun beban, ambil nilai absolut
+                })
+        
+        # Hitung total masing-masing kategori
+        total_pendapatan = sum(akun['nominal'] for akun in pendapatan_akun)
+        total_hpp = sum(akun['nominal'] for akun in hpp_akun)
+        total_beban = sum(akun['nominal'] for akun in beban_akun)
+        
+        # Hitung laba kotor dan laba bersih
+        laba_kotor = total_pendapatan - total_hpp
+        laba_bersih = laba_kotor - total_beban
+        
+        # Tampilkan Laporan Laba Rugi
+        st.markdown("### A. Pendapatan Usaha")
+        
+        if pendapatan_akun:
+            for akun in pendapatan_akun:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(akun['nama'])
+                with col2:
+                    st.write(format_rupiah(akun['nominal']))
+        else:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write("Pendapatan")
+            with col2:
+                st.write(format_rupiah(0))
+        
+        st.markdown("---")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("**Total Pendapatan**")
+        with col2:
+            st.markdown(f"**{format_rupiah(total_pendapatan)}**")
+        
+        st.markdown("### B. Harga Pokok Penjualan (HPP)")
+        
+        if hpp_akun:
+            for akun in hpp_akun:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(akun['nama'])
+                with col2:
+                    st.write(format_rupiah(akun['nominal']))
+        else:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write("Harga Pokok Penjualan")
+            with col2:
+                st.write(format_rupiah(0))
+        
+        st.markdown("---")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("**Total HPP**")
+        with col2:
+            st.markdown(f"**{format_rupiah(total_hpp)}**")
+        
+        st.markdown("---")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("**Laba Kotor**")
+        with col2:
+            laba_kotor_color = "green" if laba_kotor >= 0 else "red"
+            st.markdown(f"<span style='color: {laba_kotor_color}; font-weight: bold;'>{format_rupiah(laba_kotor)}</span>", unsafe_allow_html=True)
+        
+        st.markdown("### C. Beban Usaha")
+        
+        if beban_akun:
+            for akun in beban_akun:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(akun['nama'])
+                with col2:
+                    st.write(format_rupiah(akun['nominal']))
+        else:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write("Beban Usaha")
+            with col2:
+                st.write(format_rupiah(0))
+        
+        st.markdown("---")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("**Total Beban**")
+        with col2:
+            st.markdown(f"**{format_rupiah(total_beban)}**")
+        
+        # Hasil Akhir
+        st.markdown("---")
+        laba_bersih_color = "green" if laba_bersih >= 0 else "red"
+        st.markdown(f"""
+        <div style="background: {laba_bersih_color}; color: white; padding: 1.5rem; border-radius: 10px; text-align: center; margin-top: 2rem;">
+            <h2>Laba Bersih Sebelum Pajak</h2>
+            <h1>{format_rupiah(laba_bersih)}</h1>
+            <p>{'Perusahaan mengalami laba' if laba_bersih >= 0 else 'Perusahaan mengalami rugi'}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -1942,14 +2412,140 @@ def show_perubahan_modal():
         st.rerun()
     
     try:
-        ledger_df = get_ledger_data()
+        wb = load_workbook('journal_ledger.xlsx')
+        ws = wb['Buku Besar']
         
-        if ledger_df.empty:
-            st.info("Belum ada data untuk membuat laporan perubahan modal")
-            return
+        # Kumpulkan semua akun dan saldo terakhir
+        account_balances = {}
         
-        # Implementasi logika laporan perubahan modal menggunakan data dari SQLite
-        st.info("Fungsi laporan perubahan modal sedang dalam pengembangan menggunakan database SQLite")
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+                continue
+            
+            account, date, keterangan, debit, kredit, saldo = row
+            
+            if account is None or account == "":
+                continue
+            
+            # Simpan saldo terakhir untuk setiap akun
+            if account not in account_balances:
+                try:
+                    account_num, account_name = account.split(" - ", 1)
+                except:
+                    account_num = account
+                    account_name = account
+                
+                account_balances[account] = {
+                    'account_num': account_num.strip(),
+                    'account_name': account_name,
+                    'latest_saldo': 0.0
+                }
+            
+            # Update saldo terakhir jika ada nilai saldo
+            if saldo is not None:
+                account_balances[account]['latest_saldo'] = saldo
+        
+        wb.close()
+        
+        # Ambil Modal Awal dari akun modal (3-30000)
+        modal_awal = 0.0
+        prive = 0.0
+        
+        for account, data in account_balances.items():
+            account_num = data['account_num']
+            saldo = data['latest_saldo']
+            
+            # Modal Awal (3-30000)
+            if account_num == '3-30000' or account_num == '30000':
+                modal_awal = abs(saldo)
+            
+            # Prive (3-30100)
+            elif account_num == '3-30100' or account_num == '30100':
+                prive = abs(saldo)
+        
+        # Hitung Laba Bersih dari Laporan Laba Rugi
+        # Kelompokkan akun berdasarkan kategori
+        pendapatan_akun = []
+        hpp_akun = []
+        beban_akun = []
+        
+        for account, data in account_balances.items():
+            account_num = data['account_num']
+            saldo = data['latest_saldo']
+            
+            # Ambil kode utama (angka sebelum - atau spasi)
+            if '-' in account_num:
+                main_code = account_num.split('-')[0].strip()
+            elif ' ' in account_num:
+                main_code = account_num.split()[0].strip()
+            else:
+                main_code = account_num
+            
+            # Klasifikasi akun berdasarkan kode
+            if main_code.startswith('4'):  # Pendapatan
+                pendapatan_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)
+                })
+            elif main_code.startswith('5'):  # HPP
+                hpp_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)
+                })
+            elif main_code.startswith('6'):  # Beban
+                beban_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)
+                })
+        
+        # Hitung Laba Bersih
+        total_pendapatan = sum(akun['nominal'] for akun in pendapatan_akun)
+        total_hpp = sum(akun['nominal'] for akun in hpp_akun)
+        total_beban = sum(akun['nominal'] for akun in beban_akun)
+        
+        laba_kotor = total_pendapatan - total_hpp
+        laba_bersih = laba_kotor - total_beban
+        
+        # Hitung Modal Akhir
+        modal_akhir = modal_awal + laba_bersih - prive
+        
+        # Tampilkan Laporan Perubahan Modal
+        st.markdown("### Laporan Perubahan Modal")
+        
+        # Modal Awal
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.write("Modal Awal")
+        with col2:
+            st.write(format_rupiah(modal_awal))
+        
+        # Laba/Rugi Bersih
+        laba_color = "green" if laba_bersih >= 0 else "red"
+        laba_text = "Laba Bersih" if laba_bersih >= 0 else "Rugi Bersih"
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**{laba_text}**")
+        with col2:
+            st.markdown(f"<span style='color: {laba_color}'>{format_rupiah(abs(laba_bersih))}</span>", unsafe_allow_html=True)
+        
+        # Prive
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("**Prive**")
+        with col2:
+            st.markdown(f"<span style='color: red'>({format_rupiah(prive)})</span>", unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Modal Akhir
+        modal_color = "green" if modal_akhir >= 0 else "red"
+        st.markdown(f"""
+        <div style="background: {modal_color}; color: white; padding: 1.5rem; border-radius: 10px; text-align: center; margin-top: 1rem;">
+            <h2>Modal Akhir</h2>
+            <h1>{format_rupiah(modal_akhir)}</h1>
+        </div>
+        """, unsafe_allow_html=True)
         
     except Exception as e:
         st.error(f"Error: {e}")
@@ -1962,19 +2558,454 @@ def show_neraca():
         st.rerun()
     
     try:
-        ledger_df = get_ledger_data()
+        def is_accumulation_account(account_name):
+            """Cek apakah akun termasuk akun akumulasi"""
+            if not account_name:
+                return False
+            accumulation_keywords = ['akumulasi', 'accumulation', 'penyusutan', 'depreciation']
+            account_lower = str(account_name).lower()
+            return any(keyword in account_lower for keyword in accumulation_keywords)
         
-        if ledger_df.empty:
-            st.info("Belum ada data untuk membuat laporan posisi keuangan")
-            return
+        wb = load_workbook('journal_ledger.xlsx')
+        ws = wb['Buku Besar']
         
-        # Implementasi logika neraca menggunakan data dari SQLite
-        st.info("Fungsi laporan posisi keuangan sedang dalam pengembangan menggunakan database SQLite")
+        # Kumpulkan semua akun dan saldo terakhir
+        account_balances = {}
         
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+                continue
+            
+            account, date, keterangan, debit, kredit, saldo = row
+            
+            if account is None or account == "":
+                continue
+            
+            if account not in account_balances:
+                try:
+                    account_num, account_name = account.split(" - ", 1)
+                except:
+                    account_num = account
+                    account_name = account
+                
+                account_balances[account] = {
+                    'account_num': account_num.strip(),
+                    'account_name': account_name,
+                    'latest_saldo': 0.0
+                }
+            
+            if saldo is not None:
+                account_balances[account]['latest_saldo'] = saldo
+        
+        wb.close()
+        
+        # Hitung Modal Akhir (sama seperti sebelumnya)
+        modal_awal = 0.0
+        prive = 0.0
+        
+        for account, data in account_balances.items():
+            account_num = data['account_num']
+            saldo = data['latest_saldo']
+            
+            if account_num == '3-30000' or account_num == '30000':
+                modal_awal = abs(saldo)
+            elif account_num == '3-30100' or account_num == '30100':
+                prive = abs(saldo)
+        
+        # Hitung Laba Bersih
+        pendapatan_akun = []
+        hpp_akun = []
+        beban_akun = []
+        
+        for account, data in account_balances.items():
+            account_num = data['account_num']
+            saldo = data['latest_saldo']
+            
+            if '-' in account_num:
+                main_code = account_num.split('-')[0].strip()
+            elif ' ' in account_num:
+                main_code = account_num.split()[0].strip()
+            else:
+                main_code = account_num
+            
+            if main_code.startswith('4'):
+                pendapatan_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)
+                })
+            elif main_code.startswith('5'):
+                hpp_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)
+                })
+            elif main_code.startswith('6'):
+                beban_akun.append({
+                    'nama': data['account_name'],
+                    'nominal': abs(saldo)
+                })
+        
+        total_pendapatan = sum(akun['nominal'] for akun in pendapatan_akun)
+        total_hpp = sum(akun['nominal'] for akun in hpp_akun)
+        total_beban = sum(akun['nominal'] for akun in beban_akun)
+        
+        laba_kotor = total_pendapatan - total_hpp
+        laba_bersih = laba_kotor - total_beban
+        
+        modal_akhir = modal_awal + laba_bersih - prive
+        
+        # PERBAIKAN: Kelompokkan akun dengan handling akumulasi penyusutan yang benar
+        aset_lancar = []
+        aset_tetap_bruto = []      
+        akumulasi_penyusutan = []  
+        liabilitas_pendek = []
+        liabilitas_panjang = []
+        
+        for account, data in account_balances.items():
+            account_num = data['account_num']
+            saldo = data['latest_saldo']
+            nominal = abs(saldo)
+            
+            # Klasifikasi berdasarkan kode akun
+            if account_num.startswith('1-1') or account_num.startswith('11'):  # Aset Lancar
+                aset_lancar.append({
+                    'nama': data['account_name'],
+                    'nominal': nominal
+                })
+            elif account_num.startswith('1-2') or account_num.startswith('12'):  # Aset Tetap Bruto
+                # Pisahkan antara aset tetap dan akumulasi penyusutan
+                if is_accumulation_account(data['account_name']):
+                    akumulasi_penyusutan.append({
+                        'nama': data['account_name'],
+                        'nominal': nominal
+                    })
+                else:
+                    aset_tetap_bruto.append({
+                        'nama': data['account_name'],
+                        'nominal': nominal
+                    })
+            elif account_num.startswith('2-1') or account_num.startswith('21'):  # Liabilitas Jangka Pendek
+                liabilitas_pendek.append({
+                    'nama': data['account_name'],
+                    'nominal': nominal
+                })
+            elif account_num.startswith('2-2') or account_num.startswith('22'):  # Liabilitas Jangka Panjang
+                liabilitas_panjang.append({
+                    'nama': data['account_name'],
+                    'nominal': nominal
+                })
+        
+        # PERBAIKAN: Hitung aset tetap NETO (Bruto - Akumulasi Penyusutan)
+        subtotal_aset_lancar = sum(akun['nominal'] for akun in aset_lancar)
+        subtotal_aset_tetap_bruto = sum(akun['nominal'] for akun in aset_tetap_bruto)
+        total_akumulasi_penyusutan = sum(akun['nominal'] for akun in akumulasi_penyusutan)
+        subtotal_aset_tetap_neto = subtotal_aset_tetap_bruto - total_akumulasi_penyusutan
+        
+        # Total Aset = Aset Lancar + Aset Tetap Neto
+        total_aset = subtotal_aset_lancar + subtotal_aset_tetap_neto
+        
+        subtotal_liabilitas_pendek = sum(akun['nominal'] for akun in liabilitas_pendek)
+        subtotal_liabilitas_panjang = sum(akun['nominal'] for akun in liabilitas_panjang)
+        total_liabilitas = subtotal_liabilitas_pendek + subtotal_liabilitas_panjang
+        
+        total_ekuitas = modal_akhir
+        total_liabilitas_ekuitas = total_liabilitas + total_ekuitas
+        
+        # Tampilkan Laporan Posisi Keuangan dengan format yang benar
+        st.markdown("""
+        <style>
+        .neraca-container {
+            display: flex;
+            justify-content: space-between;
+            gap: 2rem;
+        }
+        .neraca-column {
+            flex: 1;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+        }
+        .neraca-header {
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #DDB27A;
+        }
+        .neraca-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .neraca-subtotal {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            padding: 0.75rem 0;
+            border-top: 2px solid #e2e8f0;
+            border-bottom: 2px solid #e2e8f0;
+            margin: 0.5rem 0;
+        }
+        .neraca-total {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            font-size: 1.1rem;
+            padding: 1rem 0;
+            border-top: 3px double #DDB27A;
+            border-bottom: 3px double #DDB27A;
+            margin: 1rem 0;
+            background: #FDF3B9;
+        }
+        .neraca-group {
+            margin-bottom: 1.5rem;
+        }
+        .group-title {
+            font-weight: bold;
+            color: #475569;
+            margin-bottom: 0.5rem;
+            padding-left: 0.5rem;
+            border-left: 3px solid #DDB27A;
+        }
+        .akumulasi-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #f1f5f9;
+            color: #666;
+            font-style: italic;
+            padding-left: 1rem;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Container utama untuk dua kolom
+        st.markdown('<div class="neraca-container">', unsafe_allow_html=True)
+        
+        # KOLOM KIRI - ASET
+        st.markdown('<div class="neraca-column">', unsafe_allow_html=True)
+        st.markdown('<div class="neraca-header">ASET</div>', unsafe_allow_html=True)
+        
+        # Aset Lancar
+        st.markdown('<div class="neraca-group">', unsafe_allow_html=True)
+        st.markdown('<div class="group-title">Aset Lancar</div>', unsafe_allow_html=True)
+        
+        if aset_lancar:
+            for akun in aset_lancar:
+                st.markdown(f"""
+                <div class="neraca-item">
+                    <span>{akun['nama']}</span>
+                    <span>{format_rupiah(akun['nominal'])}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="neraca-item">
+                <span>Tidak ada aset lancar</span>
+                <span>-</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Subtotal Aset Lancar
+        st.markdown(f"""
+        <div class="neraca-subtotal">
+            <span>Subtotal Aset Lancar</span>
+            <span>{format_rupiah(subtotal_aset_lancar)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Aset Tetap - PERBAIKAN: Tampilkan Bruto, Akumulasi, dan Neto
+        st.markdown('<div class="neraca-group">', unsafe_allow_html=True)
+        st.markdown('<div class="group-title">Aset Tetap</div>', unsafe_allow_html=True)
+        
+        if aset_tetap_bruto:
+            for akun in aset_tetap_bruto:
+                st.markdown(f"""
+                <div class="neraca-item">
+                    <span>{akun['nama']}</span>
+                    <span>{format_rupiah(akun['nominal'])}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="neraca-item">
+                <span>Tidak ada aset tetap</span>
+                <span>-</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Tampilkan Akumulasi Penyusutan sebagai pengurang
+        if akumulasi_penyusutan:
+            st.markdown('<div style="margin-top: 0.5rem;">', unsafe_allow_html=True)
+            for akun in akumulasi_penyusutan:
+                st.markdown(f"""
+                <div class="akumulasi-item">
+                    <span>{akun['nama']}</span>
+                    <span>({format_rupiah(akun['nominal'])})</span>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Subtotal Aset Tetap Bruto
+        st.markdown(f"""
+        <div class="neraca-subtotal">
+            <span>Aset Tetap Bruto</span>
+            <span>{format_rupiah(subtotal_aset_tetap_bruto)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Akumulasi Penyusutan
+        if akumulasi_penyusutan:
+            st.markdown(f"""
+            <div class="neraca-item">
+                <span>Akumulasi Penyusutan</span>
+                <span>({format_rupiah(total_akumulasi_penyusutan)})</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Subtotal Aset Tetap Neto
+        st.markdown(f"""
+        <div class="neraca-subtotal">
+            <span>Aset Tetap Neto</span>
+            <span>{format_rupiah(subtotal_aset_tetap_neto)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Total Aset
+        st.markdown(f"""
+        <div class="neraca-total">
+            <span>TOTAL ASET</span>
+            <span>{format_rupiah(total_aset)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)  # Tutup kolom aset
+        
+        # KOLOM KANAN - LIABILITAS & EKUITAS
+        st.markdown('<div class="neraca-column">', unsafe_allow_html=True)
+        st.markdown('<div class="neraca-header">LIABILITAS & EKUITAS</div>', unsafe_allow_html=True)
+        
+        # Liabilitas Jangka Pendek
+        st.markdown('<div class="neraca-group">', unsafe_allow_html=True)
+        st.markdown('<div class="group-title">Liabilitas Jangka Pendek</div>', unsafe_allow_html=True)
+        
+        if liabilitas_pendek:
+            for akun in liabilitas_pendek:
+                st.markdown(f"""
+                <div class="neraca-item">
+                    <span>{akun['nama']}</span>
+                    <span>{format_rupiah(akun['nominal'])}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="neraca-item">
+                <span>Tidak ada liabilitas jangka pendek</span>
+                <span>-</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Subtotal Liabilitas Jangka Pendek
+        st.markdown(f"""
+        <div class="neraca-subtotal">
+            <span>Subtotal Liabilitas Jangka Pendek</span>
+            <span>{format_rupiah(subtotal_liabilitas_pendek)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Liabilitas Jangka Panjang
+        st.markdown('<div class="neraca-group">', unsafe_allow_html=True)
+        st.markdown('<div class="group-title">Liabilitas Jangka Panjang</div>', unsafe_allow_html=True)
+        
+        if liabilitas_panjang:
+            for akun in liabilitas_panjang:
+                st.markdown(f"""
+                <div class="neraca-item">
+                    <span>{akun['nama']}</span>
+                    <span>{format_rupiah(akun['nominal'])}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="neraca-item">
+                <span>Tidak ada liabilitas jangka panjang</span>
+                <span>-</span>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Subtotal Liabilitas Jangka Panjang
+        st.markdown(f"""
+        <div class="neraca-subtotal">
+            <span>Subtotal Liabilitas Jangka Panjang</span>
+            <span>{format_rupiah(subtotal_liabilitas_panjang)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Total Liabilitas
+        st.markdown(f"""
+        <div class="neraca-subtotal">
+            <span>Total Liabilitas</span>
+            <span>{format_rupiah(total_liabilitas)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Ekuitas
+        st.markdown('<div class="neraca-group">', unsafe_allow_html=True)
+        st.markdown('<div class="group-title">Ekuitas</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        <div class="neraca-item">
+            <span>Modal Akhir</span>
+            <span>{format_rupiah(modal_akhir)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Subtotal Ekuitas
+        st.markdown(f"""
+        <div class="neraca-subtotal">
+            <span>Total Ekuitas</span>
+            <span>{format_rupiah(total_ekuitas)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Total Liabilitas & Ekuitas
+        st.markdown(f"""
+        <div class="neraca-total">
+            <span>TOTAL LIABILITAS & EKUITAS</span>
+            <span>{format_rupiah(total_liabilitas_ekuitas)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)  # Tutup kolom liabilitas & ekuitas
+        st.markdown('</div>', unsafe_allow_html=True)  # Tutup container utama
+        
+        # Balance Check
+        is_balanced = abs(total_aset - total_liabilitas_ekuitas) < 0.01
+        st.markdown("---")
+        if is_balanced:
+            st.success("✅ NERACA SEIMBANG - Total Aset = Total Liabilitas & Ekuitas")
+        else:
+            st.error(f"❌ NERACA TIDAK SEIMBANG - Selisih: {format_rupiah(abs(total_aset - total_liabilitas_ekuitas))}")
+            
+            # Debug info untuk membantu troubleshooting
+            st.warning("🔍 **Debug Info:**")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"Total Aset: {format_rupiah(total_aset)}")
+                st.write(f"- Aset Lancar: {format_rupiah(subtotal_aset_lancar)}")
+                st.write(f"- Aset Tetap Bruto: {format_rupiah(subtotal_aset_tetap_bruto)}")
+                st.write(f"- Akumulasi Penyusutan: {format_rupiah(total_akumulasi_penyusutan)}")
+                st.write(f"- Aset Tetap Neto: {format_rupiah(subtotal_aset_tetap_neto)}")
+            with col2:
+                st.write(f"Total Liabilitas & Ekuitas: {format_rupiah(total_liabilitas_ekuitas)}")
+                st.write(f"- Liabilitas: {format_rupiah(total_liabilitas)}")
+                st.write(f"- Ekuitas: {format_rupiah(total_ekuitas)}")
+    
     except Exception as e:
         st.error(f"Error: {e}")
 
-# Router untuk halaman
 if st.session_state.current_page == "Dashboard":
     show_dashboard()
 elif st.session_state.current_page == "Kartu Persediaan":
