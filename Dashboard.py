@@ -341,9 +341,128 @@ def get_inventory_account(product_name):
         if key.lower() in product_name.lower():
             return account
     
-    return "1-12000 - Persediaan Kerbau Dewasa Jantan"  # default
+    return "1-12000 - Persediaan Kerbau Dewasa Jantan"
 
-# Database Initialization
+def delete_purchase_transaction(purchase_data):
+    """Hapus transaksi pembelian dari semua sistem"""
+    try:
+        # 1. Hapus dari database pembelian
+        wb = openpyxl.load_workbook('databasesia.xlsx')
+        ws_purchases = wb['Purchases']
+        
+        # Hapus baris dari purchases
+        ws_purchases.delete_rows(purchase_data['row_index'])
+        
+        # 2. Update inventory (kurangi stok dan hitung ulang average cost)
+        ws_inventory = wb['Inventory']
+        product_name = purchase_data['product_name']
+        quantity_to_remove = safe_parse_int_from_qtytext(purchase_data['quantity'])
+        price_to_remove = safe_parse_price(purchase_data['price'])
+        total_to_remove = safe_parse_price(purchase_data['total'])
+        
+        # Cari produk di inventory
+        for row in ws_inventory.iter_rows(min_row=2, values_only=False):
+            if row[0].value and str(row[0].value).strip().lower() == product_name.strip().lower():
+                current_qty_str = str(row[1].value) if row[1].value else "0"
+                current_qty = safe_parse_int_from_qtytext(current_qty_str)
+                current_avg_price = safe_parse_price(row[2].value) if row[2].value else 0
+                current_total = safe_parse_price(row[3].value) if row[3].value else 0
+                
+                # Hitung quantity baru
+                new_qty = current_qty - quantity_to_remove
+                
+                if new_qty <= 0:
+                    # Hapus produk dari inventory jika stok habis
+                    ws_inventory.delete_rows(row[0].row)
+                else:
+                    # Hitung average price baru
+                    if new_qty > 0:
+                        # Total value sebelum penghapusan
+                        total_value_before = current_avg_price * current_qty
+                        # Total value yang dihapus
+                        total_value_removed = price_to_remove * quantity_to_remove
+                        # Total value setelah penghapusan
+                        total_value_after = total_value_before - total_value_removed
+                        # Average price baru
+                        new_avg_price = total_value_after / new_qty
+                        
+                        # Update inventory
+                        unit = current_qty_str.split()[1] if len(current_qty_str.split()) > 1 else "unit"
+                        row[1].value = f"{new_qty} {unit}"
+                        row[2].value = round(new_avg_price, 2)
+                        row[3].value = round(new_avg_price * new_qty, 2)
+                
+                break
+        
+        wb.save('databasesia.xlsx')
+        wb.close()
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Error dalam delete_purchase_transaction: {e}")
+        return False
+
+def delete_sales_transaction(sale_data):
+    """Hapus transaksi penjualan dari semua sistem"""
+    try:
+        # 1. Hapus dari database penjualan
+        wb = openpyxl.load_workbook('databasesia.xlsx')
+        ws_sales = wb['Sales']
+        
+        # Hapus baris dari sales
+        ws_sales.delete_rows(sale_data['row_index'])
+        
+        # 2. Update inventory (tambahkan kembali stok yang terjual)
+        ws_inventory = wb['Inventory']
+        product_name = sale_data['product_name']
+        quantity_to_restore = safe_parse_int_from_qtytext(sale_data['quantity'])
+        selling_price = safe_parse_price(sale_data['price'])
+        
+        # Cari produk di inventory untuk mendapatkan HPP
+        hpp_price = 0
+        product_found = False
+        
+        for row in ws_inventory.iter_rows(min_row=2, values_only=False):
+            if row[0].value and str(row[0].value).strip().lower() == product_name.strip().lower():
+                current_qty_str = str(row[1].value) if row[1].value else "0"
+                current_qty = safe_parse_int_from_qtytext(current_qty_str)
+                current_avg_price = safe_parse_price(row[2].value) if row[2].value else 0
+                
+                # Kembalikan stok
+                new_qty = current_qty + quantity_to_restore
+                unit = current_qty_str.split()[1] if len(current_qty_str.split()) > 1 else "ekor"
+                
+                # Hitung average price baru (gunakan harga average yang ada)
+                new_avg_price = current_avg_price  # Tetap menggunakan average price yang ada
+                
+                # Update inventory
+                row[1].value = f"{new_qty} {unit}"
+                row[2].value = round(new_avg_price, 2)
+                row[3].value = round(new_avg_price * new_qty, 2)
+                
+                hpp_price = current_avg_price
+                product_found = True
+                break
+        
+        # Jika produk tidak ditemukan, buat baru
+        if not product_found:
+            ws_inventory.append([
+                product_name,
+                f"{quantity_to_restore} ekor",
+                hpp_price,
+                hpp_price * quantity_to_restore
+            ])
+        
+        wb.save('databasesia.xlsx')
+        wb.close()
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Error dalam delete_sales_transaction: {e}")
+        return False
+
 def create_workbook_if_not_exists():
     if not os.path.exists('databasesia.xlsx'):
         wb = openpyxl.Workbook()
@@ -701,6 +820,53 @@ def show_kartu_persediaan():
         except Exception as e:
             st.error(f"❌ Error loading data: {e}")
 
+        st.markdown("### 🗑️ Hapus Pembelian")
+        
+        try:
+            wb = openpyxl.load_workbook('databasesia.xlsx')
+            ws_purchases = wb['Purchases']
+            
+            # Ambil data pembelian untuk dropdown
+            purchase_options = []
+            purchase_details = {}
+            
+            for i, row in enumerate(ws_purchases.iter_rows(min_row=2, values_only=True), 2):
+                if row and row[0]:
+                    date, product_name, quantity, price, total, timestamp, payment_method = row[:7]
+                    key = f"{date} - {product_name} - {quantity} - {format_rupiah(safe_parse_price(total))}"
+                    purchase_options.append(key)
+                    purchase_details[key] = {
+                        'row_index': i,
+                        'date': date,
+                        'product_name': product_name,
+                        'quantity': quantity,
+                        'price': price,
+                        'total': total,
+                        'timestamp': timestamp,
+                        'payment_method': payment_method
+                    }
+            
+            wb.close()
+            
+            if purchase_options:
+                selected_purchase = st.selectbox("Pilih Pembelian yang akan dihapus:", purchase_options)
+                
+                col1, col2 = st.columns([3, 1])
+                with col2:
+                    if st.button("🗑️ Hapus Pembelian Terpilih", type="secondary", use_container_width=True):
+                        if selected_purchase:
+                            purchase_data = purchase_details[selected_purchase]
+                            if delete_purchase_transaction(purchase_data):
+                                st.success("✅ Pembelian berhasil dihapus dari semua sistem!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Gagal menghapus pembelian!")
+            else:
+                st.info("📝 Tidak ada data pembelian untuk dihapus")
+                
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+
     with tab2:
         st.markdown("### 💰 Tambah Penjualan Baru")
         
@@ -793,9 +959,6 @@ def show_kartu_persediaan():
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
-        # ========== TOMBOL SIMPAN SEMUA PENJUALAN DIPINDAHKAN KE LUAR FORM ==========
-        
-        # Daftar Penjualan Sementara
         st.markdown("### 🛍️ Daftar Penjualan Sementara")
         
         if 'order_list' not in st.session_state:
@@ -900,13 +1063,6 @@ def show_kartu_persediaan():
                                     saldo = safe_parse_price(row[5]) if row[5] else 0
                                     current_balances[account] = saldo
                             
-                            # JURNAL PENJUALAN - 4 ENTRI:
-                            # 1. Debit: Kas/Piutang (total penjualan)
-                            # 2. Debit: HPP (total HPP)
-                            # 3. Kredit: Pendapatan (total penjualan)  
-                            # 4. Kredit: Persediaan (total HPP)
-                            
-                            # Baris 1: Debit Kas/Piutang
                             ws_journal.append([
                                 date_str,
                                 debit_account_1,
@@ -1012,6 +1168,53 @@ def show_kartu_persediaan():
                     st.rerun()
         else:
             st.info("📝 Belum ada penjualan dalam daftar")
+
+        st.markdown("### 🗑️ Hapus Penjualan")
+        
+        try:
+            wb = openpyxl.load_workbook('databasesia.xlsx')
+            ws_sales = wb['Sales']
+            
+            # Ambil data penjualan untuk dropdown
+            sales_options = []
+            sales_details = {}
+            
+            for i, row in enumerate(ws_sales.iter_rows(min_row=2, values_only=True), 2):
+                if row and row[0]:
+                    date, product_name, quantity, price, total, timestamp, payment_method = row[:7]
+                    key = f"{date} - {product_name} - {quantity} - {format_rupiah(safe_parse_price(total))}"
+                    sales_options.append(key)
+                    sales_details[key] = {
+                        'row_index': i,
+                        'date': date,
+                        'product_name': product_name,
+                        'quantity': quantity,
+                        'price': price,
+                        'total': total,
+                        'timestamp': timestamp,
+                        'payment_method': payment_method
+                    }
+            
+            wb.close()
+            
+            if sales_options:
+                selected_sale = st.selectbox("Pilih Penjualan yang akan dihapus:", sales_options)
+                
+                col1, col2 = st.columns([3, 1])
+                with col2:
+                    if st.button("🗑️ Hapus Penjualan Terpilih", type="secondary", use_container_width=True):
+                        if selected_sale:
+                            sale_data = sales_details[selected_sale]
+                            if delete_sales_transaction(sale_data):
+                                st.success("✅ Penjualan berhasil dihapus dari semua sistem!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Gagal menghapus penjualan!")
+            else:
+                st.info("📝 Tidak ada data penjualan untuk dihapus")
+
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
 
     with tab3:
         st.markdown("### 📋 Riwayat Transaksi Lengkap")
@@ -1670,16 +1873,69 @@ def show_view_jurnal():
         ws = wb['Jurnal Umum']
 
         data = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        row_indices = []  # Simpan index baris untuk referensi hapus
+        transaction_groups = {}   # Kelompokkan transaksi
+        
+        # Baca semua data dulu
+        all_rows = []
+        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
             if any(row[:4]):  # Skip baris yang benar-benar kosong
                 tanggal, akun, debit, kredit, keterangan = row
-                data.append({
-                    'Tanggal': tanggal or '',
-                    'Akun': akun or '',
-                    'Debit': format_rupiah(debit) if debit else '',
-                    'Kredit': format_rupiah(kredit) if kredit else '',
-                    'Keterangan': keterangan or ''
+                all_rows.append({
+                    'row_index': i,
+                    'tanggal': tanggal or '',
+                    'akun': akun or '',
+                    'debit': debit,
+                    'kredit': kredit,
+                    'keterangan': keterangan or ''
                 })
+
+        # Kelompokkan transaksi berdasarkan baris kosong
+        current_group = []
+        groups = []
+        
+        for row in all_rows:
+            # Jika baris memiliki tanggal (bukan kosong), ini kemungkinan awal transaksi
+            if row['tanggal']:
+                # Simpan group sebelumnya jika ada
+                if current_group:
+                    groups.append(current_group.copy())
+                    current_group = []
+            
+            current_group.append(row)
+        
+        # Simpan group terakhir
+        if current_group:
+            groups.append(current_group)
+
+        # Format data untuk display dan hapus
+        group_counter = 0
+        for group in groups:
+            if group:  # Pastikan group tidak kosong
+                group_tanggal = group[0]['tanggal'] if group[0]['tanggal'] else ''
+                group_keterangan = group[0]['keterangan'] if group[0]['keterangan'] else 'Transaksi tanpa keterangan'
+                
+                transaction_groups[group_counter] = {
+                    'keterangan': group_keterangan,
+                    'tanggal': group_tanggal,
+                    'rows': group
+                }
+                
+                # Tambahkan ke data untuk display
+                for entry in group:
+                    data.append({
+                        'No': len(data) + 1,
+                        'Tanggal': entry['tanggal'],
+                        'Akun': entry['akun'],
+                        'Debit': format_rupiah(entry['debit']) if entry['debit'] else '',
+                        'Kredit': format_rupiah(entry['kredit']) if entry['kredit'] else '',
+                        'Keterangan': entry['keterangan'],
+                        'RowIndex': entry['row_index'],
+                        'GroupID': group_counter
+                    })
+                    row_indices.append(entry['row_index'])
+                
+                group_counter += 1
 
         # Hitung total before closing workbook
         total_debit = sum(safe_parse_price(row[2]) for row in ws.iter_rows(min_row=2, values_only=True) if row and row[2])
@@ -1690,12 +1946,18 @@ def show_view_jurnal():
         if data:
             df = pd.DataFrame(data)
 
-            # Styling untuk tampilan yang lebih baik
+            # Tampilkan dataframe dengan kolom No
             st.dataframe(
                 df,
                 use_container_width=True,
                 hide_index=True,
-                height=600
+                height=600,
+                column_config={
+                    "No": st.column_config.NumberColumn(
+                        "No",
+                        width="small"
+                    )
+                }
             )
 
             col1, col2, col3 = st.columns(3)
@@ -1711,35 +1973,207 @@ def show_view_jurnal():
 
             # Export option
             st.download_button(
-                label="📥 Export ke Excell",
+                label="📥 Export ke Excel",
                 data=df.to_csv(index=False).encode('utf-8'),
                 file_name=f"jurnal_umum_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
+            
+            # ========== FITUR HAPUS JURNAL ==========
+            st.markdown("---")
+            st.markdown("### 🗑️ Hapus Transaksi Jurnal")
+            
+            # HAPUS PER TRANSAKSI (SEMUA AKUN DALAM SATU TRANSAKSI)
+            if transaction_groups:
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    # Buat opsi transaksi
+                    transaction_options = {}
+                    for group_id, group_data in transaction_groups.items():
+                        key = f"{group_data['tanggal']} - {group_data['keterangan']} ({len(group_data['rows'])} akun)"
+                        transaction_options[key] = group_id
+                    
+                    selected_transaction = st.selectbox(
+                        "Pilih transaksi yang akan dihapus:",
+                        options=list(transaction_options.keys()),
+                        key="pilih_transaksi_hapus"
+                    )
+                
+                with col2:
+                    if st.button("🗑️ Hapus Transaksi Lengkap", type="secondary", use_container_width=True):
+                        if selected_transaction:
+                            group_id = transaction_options[selected_transaction]
+                            transaction_data = transaction_groups[group_id]
+                            row_indices_to_delete = [entry['row_index'] for entry in transaction_data['rows']]
+                            
+                            if delete_journal_transaction(transaction_data['keterangan'], row_indices_to_delete):
+                                st.success(f"✅ Transaksi berhasil dihapus!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Gagal menghapus transaksi!")
+                        else:
+                            st.error("❌ Pilih transaksi yang akan dihapus!")
+                
+                # Tampilkan detail transaksi terpilih
+                if selected_transaction:
+                    group_id = transaction_options[selected_transaction]
+                    transaction_data = transaction_groups[group_id]
+                    
+                    st.info(f"**Detail Transaksi yang Dipilih:**")
+                    st.write(f"**Tanggal:** {transaction_data['tanggal']}")
+                    st.write(f"**Keterangan:** {transaction_data['keterangan']}")
+                    st.write(f"**Jumlah Akun:** {len(transaction_data['rows'])}")
+                    
+                    st.write("**Daftar Akun:**")
+                    for entry in transaction_data['rows']:
+                        debit_display = format_rupiah(entry['debit']) if entry['debit'] else ''
+                        kredit_display = format_rupiah(entry['kredit']) if entry['kredit'] else ''
+                        
+                        if debit_display and debit_display != '':
+                            st.write(f"• {entry['akun']} - Debit: {debit_display}")
+                        else:
+                            st.write(f"• {entry['akun']} - Kredit: {kredit_display}")
+            
+            else:
+                st.info("📝 Tidak ada transaksi untuk dihapus")
+                
         else:
             st.info("📝 Belum ada transaksi jurnal")
 
     except Exception as e:
         st.error(f"Error: {e}")
 
-    # Tombol untuk clear data
+    # Tombol untuk clear data SEMUA (fungsi lama tetap ada)
     st.markdown("---")
-    if st.button("🗑️ Hapus Semua Data Jurnal", type="secondary", use_container_width=True):
-        try:
-            wb = Workbook()
-            ws_journal = wb.active
-            ws_journal.title = "Jurnal Umum"
-            ws_journal.append(["Tanggal", "Akun", "Debit", "Kredit", "Keterangan"])
+    st.markdown("### ⚠️ Hapus Semua Data Jurnal")
+    st.warning("Tindakan ini akan menghapus SEMUA data jurnal dan tidak dapat dikembalikan!")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Hapus Semua Data Jurnal", type="secondary", use_container_width=True):
+            try:
+                wb = Workbook()
+                ws_journal = wb.active
+                ws_journal.title = "Jurnal Umum"
+                ws_journal.append(["Tanggal", "Akun", "Debit", "Kredit", "Keterangan"])
 
-            ws_ledger = wb.create_sheet("Buku Besar")
-            ws_ledger.append(["Akun", "Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"])
+                ws_ledger = wb.create_sheet("Buku Besar")
+                ws_ledger.append(["Akun", "Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"])
 
-            wb.save('journal_ledger.xlsx')
-            st.success("Data jurnal berhasil direset!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error: {e}")
+                wb.save('journal_ledger.xlsx')
+                st.success("Data jurnal berhasil direset!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    with col2:
+        if st.button("🔄 Hitung Ulang Saldo Buku Besar", type="secondary", use_container_width=True):
+            if recalculate_all_ledger_balances():
+                st.success("✅ Saldo Buku Besar berhasil dihitung ulang!")
+            else:
+                st.error("❌ Gagal menghitung ulang saldo!")
+
+# ========== FUNGSI UNTUK HAPUS ==========
+def delete_journal_transaction(keterangan, row_indices):
+    """Hapus satu transaksi lengkap berdasarkan keterangan"""
+    try:
+        wb = load_workbook('journal_ledger.xlsx')
+        ws_journal = wb['Jurnal Umum']
+        ws_ledger = wb['Buku Besar']
+        
+        # 1. Hapus baris dari Jurnal Umum (dari belakang ke depan)
+        for row_idx in sorted(row_indices, reverse=True):
+            if row_idx <= ws_journal.max_row:
+                ws_journal.delete_rows(row_idx)
+        
+        # 2. Hapus entri terkait di Buku Besar berdasarkan keterangan
+        rows_to_delete_ledger = []
+        
+        for i, row in enumerate(ws_ledger.iter_rows(min_row=2, values_only=True), 2):
+            if row and row[2] and str(row[2]) == str(keterangan):
+                rows_to_delete_ledger.append(i)
+        
+        # Hapus dari belakang ke depan
+        for row_idx in sorted(rows_to_delete_ledger, reverse=True):
+            if row_idx <= ws_ledger.max_row:
+                ws_ledger.delete_rows(row_idx)
+        
+        # 3. Hitung ulang saldo Buku Besar
+        recalculate_all_ledger_balances_ws(ws_ledger)
+        
+        wb.save('journal_ledger.xlsx')
+        wb.close()
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Error dalam delete_journal_transaction: {e}")
+        return False
+
+def recalculate_all_ledger_balances_ws(ws_ledger):
+    """Hitung ulang semua saldo di Buku Besar (versi dengan worksheet)"""
+    try:
+        # Kelompokkan data per akun
+        account_transactions = {}
+        
+        for row in ws_ledger.iter_rows(min_row=2, values_only=False):
+            if not row[0].value:  # Skip jika tidak ada akun
+                continue
+                
+            account = row[0].value
+            if account not in account_transactions:
+                account_transactions[account] = []
+            
+            account_transactions[account].append(row)
+        
+        # Hitung ulang saldo untuk setiap akun
+        for account, transactions in account_transactions.items():
+            running_balance = 0.0
+            
+            for row in transactions:
+                debit = safe_parse_price(row[3].value) if row[3].value else 0.0
+                kredit = safe_parse_price(row[4].value) if row[4].value else 0.0
+                
+                # Tentukan jenis akun
+                account_str = str(account)
+                account_code = account_str.split(' - ')[0] if ' - ' in account_str else account_str
+                
+                # Akun dengan normal balance kredit: Liability (2), Equity (3), Revenue (4)
+                is_credit_account = account_code.startswith(('2', '3', '4'))
+                
+                if is_credit_account:
+                    running_balance = running_balance - debit + kredit
+                else:
+                    # Akun dengan normal balance debit: Asset (1), Expense (5,6)
+                    running_balance = running_balance + debit - kredit
+                
+                # Update saldo
+                row[5].value = running_balance
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Error dalam recalculate_all_ledger_balances_ws: {e}")
+        return False
+
+def recalculate_all_ledger_balances():
+    """Hitung ulang semua saldo di Buku Besar (versi standalone)"""
+    try:
+        wb = load_workbook('journal_ledger.xlsx')
+        ws_ledger = wb['Buku Besar']
+        
+        success = recalculate_all_ledger_balances_ws(ws_ledger)
+        
+        wb.save('journal_ledger.xlsx')
+        wb.close()
+        
+        return success
+        
+    except Exception as e:
+        st.error(f"Error dalam recalculate_all_ledger_balances: {e}")
+        return False
 
 def show_buku_besar():
     st.markdown('<div class="main-header"><h1>📚 Buku Besar</h1></div>', unsafe_allow_html=True)
